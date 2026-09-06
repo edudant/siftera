@@ -1,9 +1,26 @@
 {
+  // Lokální vývoj běží proti .wrangler/; produkční prostředí je samostatné, viz environment "prod" níže.
   "name": "siftera-local",
   "main": "dist/server/index.js",
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {"directory":"dist/client","binding":"ASSETS","not_found_handling":"single-page-application","run_worker_first":["/api/*","/healthz"]},
   "d1_databases": [{"binding":"DB","database_name":"siftera-local","database_id":"local-only","migrations_dir":"drizzle"}],
-  "r2_buckets": [{"binding":"CONTENT","bucket_name":"siftera-content-local"}]
+  "r2_buckets": [{"binding":"CONTENT","bucket_name":"siftera-content-local"}],
+  "observability": {"enabled": true},
+
+  "env": {
+    // Produkce: `wrangler deploy --env prod`. Před prvním nasazením doplň database_id z `wrangler d1 create`
+    // a nastav tajemství: `wrangler secret put API_TOKEN --env prod` a totéž pro OWNER_UID.
+    // API_TOKEN a OWNER_UID nikdy nepatří sem — jsou to secrets, ne vars.
+    "prod": {
+      "name": "siftera-api",
+      "vars": {
+        "ALLOWED_ORIGINS": "https://edudant.github.io"
+      },
+      "d1_databases": [{"binding":"DB","database_name":"siftera-prod","database_id":"NAHRADIT_ID_Z_WRANGLER_D1_CREATE","migrations_dir":"drizzle"}],
+      "r2_buckets": [{"binding":"CONTENT","bucket_name":"siftera-content-prod"}],
+      "observability": {"enabled": true}
+    }
+  }
 }

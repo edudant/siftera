@@ -27,17 +27,23 @@ Ukázka čte sanitizovaný snapshot `apps/web/public/demo-feed.json` — jen ve�
 
 Worker je API; RSS ani AI na něm neběží. Sběr obstará lokální proces, Worker jen validuje, dedupuje a zapisuje do D1/R2:
 
+Produkce je v `wrangler.jsonc` jako prostředí `prod`, aby se lokální a ostrá konfigurace nepřepisovaly:
+
 ```sh
 pnpm exec wrangler login
 pnpm exec wrangler d1 create siftera-prod
 pnpm exec wrangler r2 bucket create siftera-content-prod
-# database_id z výstupu zapiš do wrangler.jsonc
-pnpm exec wrangler secret put API_TOKEN
-pnpm exec wrangler secret put OWNER_UID
+# database_id z výstupu zapiš do env.prod.d1_databases ve wrangler.jsonc
+pnpm exec wrangler secret put API_TOKEN --env prod
+pnpm exec wrangler secret put OWNER_UID --env prod
 pnpm build:hosted
 pnpm exec wrangler d1 migrations apply siftera-prod --remote
-pnpm exec wrangler deploy
+pnpm exec wrangler deploy --env prod
 ```
+
+Bez interaktivního přihlášení lze místo `wrangler login` použít `CLOUDFLARE_API_TOKEN` v prostředí (token s právy Workers, D1 a R2). `wrangler deploy --temporary` se pro tento projekt nehodí — dočasné účty nepodporují R2.
+
+Konfiguraci lze kdykoli ověřit bez účtu: `pnpm exec wrangler deploy --dry-run --env prod`.
 
 `ALLOWED_ORIGINS` musí obsahovat adresu webu (například `https://edudant.github.io`), jinak prohlížeč cross-origin volání zablokuje. Bez `API_TOKEN` API odmítne všechno — identita se bere z tokenu, nikdy z hlavičky, kterou by si mohl nastavit klient sám.
 
