@@ -10,15 +10,15 @@
   "observability": {"enabled": true},
 
   "env": {
-    // Produkce: `wrangler deploy --env prod`. Před prvním nasazením doplň database_id z `wrangler d1 create`
-    // a nastav tajemství: `wrangler secret put API_TOKEN --env prod` a totéž pro OWNER_UID.
+    // Produkce: `wrangler deploy --env prod`. Tajemství se nastavují zvlášť:
+    // `wrangler secret put API_TOKEN --env prod` a totéž pro OWNER_UID.
     // API_TOKEN a OWNER_UID nikdy nepatří sem — jsou to secrets, ne vars.
     "prod": {
       "name": "siftera-api",
       "vars": {
         "ALLOWED_ORIGINS": "https://edudant.github.io"
       },
-      "d1_databases": [{"binding":"DB","database_name":"siftera-prod","database_id":"NAHRADIT_ID_Z_WRANGLER_D1_CREATE","migrations_dir":"drizzle"}],
+      "d1_databases": [{"binding":"DB","database_name":"siftera-prod","database_id":"af2fec2f-63e7-4303-8ad0-95edc2d1de4f","migrations_dir":"drizzle"}],
       "r2_buckets": [{"binding":"CONTENT","bucket_name":"siftera-content-prod"}],
       "observability": {"enabled": true}
     }

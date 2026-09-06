@@ -13,3 +13,4 @@ coverage/
 /.wrangler/
 .dev.vars
 .dev.vars.*
+.siftera-prod-token
