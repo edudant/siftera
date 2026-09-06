@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { FeedItem, PreferenceProfile } from "@siftera/shared";
+import type { EditorialItem, FeedItem, PreferenceProfile } from "@siftera/shared";
 import { api, ApiError, type Bootstrap, type PrototypeSource } from "./api.js";
 import "./checkbox.css";
 
@@ -21,6 +21,7 @@ const message = (reason: unknown) => reason instanceof ApiError && reason.status
 /** „1 položka čeká“, „3 položky čekají“, „12 položek čeká“. */
 const waitingLabel = (count: number) => count === 1 ? "1 položka čeká na redakční zpracování" : count < 5 ? `${count} položky čekají na redakční zpracování` : `${count} položek čeká na redakční zpracování`;
 const pending = (data: Bootstrap | null) => (data?.inbox ?? []).filter((entry) => !entry.state.hidden);
+const basisLabel: Record<string, string> = { full_text: "celý dostupný text", excerpt: "výňatek od zdroje", metadata: "pouze metadata" };
 const presentationLabel: Record<string, string> = { article: "Článek", long_read: "Delší čtení", distilled_fact: "Ověřený fakt", school_notice: "Školní oznámení", video: "Video", audio: "Audio", discovery: "Objev", learning: "K naučení", recommendation: "Doporučení", short_fun: "Pro pobavení" };
 
 export default function App() {
@@ -30,6 +31,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [open, setOpen] = useState<string | null>(null);
   const bootstrapRef = useRef<Bootstrap | null>(null);
   const [shared, setShared] = useState<SharedInput | null>(() => {
     const params = new URLSearchParams(location.search);
@@ -58,23 +60,25 @@ export default function App() {
     return () => controller.abort();
   }, []);
   const all = useMemo(() => data ? [...data.feed.items, ...data.library] : [], [data]);
+  const opened = useMemo(() => open ? all.find((feed) => feed.item.id === open) ?? null : null, [all, open]);
   const results = useMemo(() => { const needle = folded(query); const items = [...new Map(all.map((item) => [item.item.id, item])).values()]; return needle ? items.filter((item) => folded(`${item.item.headline} ${item.item.summary} ${item.item.topics.join(" ")} ${item.item.provenance[0]?.sourceName ?? ""}`).includes(needle)) : []; }, [all, query]);
   const changeState = async (item: FeedItem, patch: { read?: boolean; saved?: boolean; hidden?: boolean }) => { try { await api.setItemState(item.state.candidateId, item.state.version, patch); await reload(); } catch (reason) { setNotice(message(reason)); } };
-  const hideCandidate = async (entry: InboxEntry) => { try { await api.setItemState(entry.candidate.id, entry.state.version, { hidden: true }); await reload(); } catch (reason) { setNotice(message(reason)); } };
+  const hideCandidate = async (entry: InboxEntry, hidden = true) => { try { await api.setItemState(entry.candidate.id, entry.state.version, { hidden }); await reload(); } catch (reason) { setNotice(message(reason)); } };
   const acceptShare = async () => { if (!shared) return; try { await api.addArticle(shared); setShared(null); history.replaceState({}, "", location.pathname); setNotice("Odkaz čeká v inboxu na zpracování."); await reload(); } catch (reason) { setNotice(message(reason)); } };
   return <div className="app"><header><button className="brand" onClick={() => setTab("today")}>Siftera<span>•</span></button><label className="search">⌕<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Hledat v načtených položkách" aria-label="Hledat v načtených položkách" /></label></header><main>
     {shared && <ShareBox value={shared} update={setShared} accept={() => void acceptShare()} dismiss={() => { setShared(null); history.replaceState({}, "", location.pathname); }} />}
     {notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice(null)} aria-label="Zavřít">×</button></div>}
     {error && <div className="error" role="alert">{error}{error === "Pro pokračování se přihlaste." ? <a href="/signin-with-chatgpt?return_to=/">Přihlásit se</a> : <button onClick={() => void reload()}>Načíst znovu</button>}</div>}
-    {query ? <Page title={`„${query}“`} eyebrow="HLEDÁNÍ V NAČTENÝCH DATECH"><p className="hint">Prohledává se aktuálně načtený výběr a knihovna. Starší archiv se nepředstírá.</p><Cards items={results} onState={changeState} empty={<Empty title="Nic jsme nenašli." detail="Hledá se jen ve vydaném výběru a knihovně, ne v čekajících položkách Inboxu." />} /></Page> : <Content tab={tab} data={data} loading={loading} setTab={setTab} reload={reload} notice={setNotice} onState={changeState} onHide={hideCandidate} />}
-  </main>{!query && <Nav tab={tab} setTab={setTab} />}</div>;
+    {query ? <Page title={`„${query}“`} eyebrow="HLEDÁNÍ V NAČTENÝCH DATECH"><p className="hint">Prohledává se aktuálně načtený výběr a knihovna. Starší archiv se nepředstírá.</p><Cards items={results} onState={changeState} onOpen={(feed) => setOpen(feed.item.id)} empty={<Empty title="Nic jsme nenašli." detail="Hledá se jen ve vydaném výběru a knihovně, ne v čekajících položkách Inboxu." />} /></Page> : <Content tab={tab} data={data} loading={loading} setTab={setTab} reload={reload} notice={setNotice} onState={changeState} onHide={hideCandidate} onOpen={(feed) => setOpen(feed.item.id)} />}
+  </main>{!query && <Nav tab={tab} setTab={setTab} />}
+  {opened && <Detail feed={opened} onState={changeState} onClose={() => setOpen(null)} />}</div>;
 }
 
-function Content({ tab, data, loading, setTab, reload, notice, onState, onHide }: { tab: Tab; data: Bootstrap | null; loading: boolean; setTab: (tab: Tab) => void; reload: () => Promise<void>; notice: (text: string) => void; onState: (item: FeedItem, patch: { read?: boolean; saved?: boolean; hidden?: boolean }) => Promise<void>; onHide: (entry: InboxEntry) => Promise<void> }) {
+function Content({ tab, data, loading, setTab, reload, notice, onState, onHide, onOpen }: { tab: Tab; data: Bootstrap | null; loading: boolean; setTab: (tab: Tab) => void; reload: () => Promise<void>; notice: (text: string) => void; onState: (item: FeedItem, patch: { read?: boolean; saved?: boolean; hidden?: boolean }) => Promise<void>; onHide: (entry: InboxEntry, hidden: boolean) => Promise<void>; onOpen: (feed: FeedItem) => void }) {
   if (loading) return <Loading />;
-  if (tab === "today") return <Page title="Váš výběr" eyebrow={`DNES · ${formatDate(data?.feed.run?.publishedAt ?? null)}`}><Cards items={data?.feed.items ?? []} onState={onState} empty={<NothingYet data={data} setTab={setTab} title="Dnešní výběr je zatím prázdný." published="Vydání sestavuje AI editor z čekajících položek; do té doby tu nic nepřibude." />} /></Page>;
-  if (tab === "library") return <Page title="Knihovna" eyebrow="POSLEDNÍ NAČTENÉ POLOŽKY"><Cards items={data?.library ?? []} onState={onState} empty={<NothingYet data={data} setTab={setTab} title="Knihovna je zatím prázdná." published="Do knihovny se ukládají vydané položky a zdroje v režimu „vše do knihovny“." />} /></Page>;
-  if (tab === "saved") return <Page title="Uložené" eyebrow="VAŠE ČTENÍ NA POZDĚJI"><Cards items={(data?.library ?? []).filter((item) => item.state.saved)} onState={onState} empty={<Empty title="Nemáte nic uloženého." detail="Srdíčkem u karty si odložíte položku na později." />} /></Page>;
+  if (tab === "today") return <Page title="Váš výběr" eyebrow={`DNES · ${formatDate(data?.feed.run?.publishedAt ?? null)}`}><Cards items={data?.feed.items ?? []} onState={onState} onOpen={onOpen} empty={<NothingYet data={data} setTab={setTab} title="Dnešní výběr je zatím prázdný." published="Vydání sestavuje AI editor z čekajících položek; do té doby tu nic nepřibude." />} /></Page>;
+  if (tab === "library") return <Page title="Knihovna" eyebrow="POSLEDNÍ NAČTENÉ POLOŽKY"><Cards items={data?.library ?? []} onState={onState} onOpen={onOpen} empty={<NothingYet data={data} setTab={setTab} title="Knihovna je zatím prázdná." published="Do knihovny se ukládají vydané položky a zdroje v režimu „vše do knihovny“." />} /></Page>;
+  if (tab === "saved") return <Page title="Uložené" eyebrow="VAŠE ČTENÍ NA POZDĚJI"><Cards items={(data?.library ?? []).filter((item) => item.state.saved)} onState={onState} onOpen={onOpen} empty={<Empty title="Nemáte nic uloženého." detail="Srdíčkem u karty si odložíte položku na později." />} /></Page>;
   if (tab === "inbox") return <Inbox data={data} reload={reload} notice={notice} onHide={onHide} />;
   if (tab === "sources") return <Sources data={data} reload={reload} notice={notice} />;
   if (tab === "editor") return <Editor notice={notice} />;
@@ -93,28 +97,107 @@ function Nav({ tab, setTab }: { tab: Tab; setTab: (tab: Tab) => void }) { const 
 function Page({ title, eyebrow, children }: { title: string; eyebrow: string; children: React.ReactNode }) { return <section><div className="heading"><p>{eyebrow}</p><h1>{title}</h1></div>{children}</section>; }
 function Loading() { return <div className="cards" aria-busy="true"><div className="skeleton"/><div className="skeleton"/><div className="skeleton"/></div>; }
 
-function Cards({ items, onState, empty }: { items: FeedItem[]; onState: (item: FeedItem, patch: { read?: boolean; saved?: boolean; hidden?: boolean }) => Promise<void>; empty: React.ReactNode }) { const visible = items.filter((item) => !item.state.hidden); return visible.length ? <div className="cards">{visible.map((feed) => <Card key={feed.item.id} feed={feed} onState={onState} />)}</div> : <>{empty}</>; }
+function Cards({ items, onState, onOpen, empty }: { items: FeedItem[]; onState: (item: FeedItem, patch: { read?: boolean; saved?: boolean; hidden?: boolean }) => Promise<void>; onOpen: (feed: FeedItem) => void; empty: React.ReactNode }) { const visible = items.filter((item) => !item.state.hidden); return visible.length ? <div className="cards">{visible.map((feed) => <Card key={feed.item.id} feed={feed} onState={onState} onOpen={onOpen} />)}</div> : <>{empty}</>; }
 function Empty({ title, detail, action }: { title: string; detail: string; action?: { label: string; onClick: () => void } }) { return <div className="empty"><span>⌁</span><h2>{title}</h2><p>{detail}</p>{action && <button className="primary" onClick={action.onClick}>{action.label}</button>}</div>; }
-function Card({ feed, onState }: { feed: FeedItem; onState: (item: FeedItem, patch: { read?: boolean; saved?: boolean; hidden?: boolean }) => Promise<void> }) { const { item, state } = feed; const provenance = item.provenance[0]; return <article className={`card ${item.presentation} ${state.read ? "read" : ""}`}><div className="meta"><span>{provenance?.sourceName ?? "Zdroj"}</span><span>{formatDate(provenance?.publishedAt ?? null)}</span>{feed.groups.includes("school") && <b>Škola</b>}</div><h2>{item.headline}</h2>{item.presentation === "distilled_fact" && item.distilledText ? <p className="fact">{item.distilledText}</p> : <p>{item.summary}</p>}<div className="footer"><small>{item.presentation === "long_read" && item.readingMinutes ? `Stojí za přečtení · ${item.readingMinutes} min` : presentationLabel[item.presentation] ?? item.presentation.replace("_", " ")}</small><div><button className={state.read ? "selected" : ""} onClick={() => void onState(feed, { read: !state.read })} aria-label="Přečteno">✓</button><button className={state.saved ? "selected" : ""} onClick={() => void onState(feed, { saved: !state.saved })} aria-label="Uložit">♡</button><button onClick={() => void onState(feed, { hidden: true })} aria-label="Skrýt">⋯</button></div></div>{provenance?.canonicalUrl && <a href={provenance.canonicalUrl} target="_blank" rel="noopener noreferrer" onClick={() => void onState(feed, { read: true })}>Otevřít originál ↗</a>}</article>; }
+function Card({ feed, onState, onOpen }: { feed: FeedItem; onState: (item: FeedItem, patch: { read?: boolean; saved?: boolean; hidden?: boolean }) => Promise<void>; onOpen: (feed: FeedItem) => void }) {
+  const { item, state } = feed;
+  const provenance = item.provenance[0];
+  const label = item.presentation === "long_read" && item.readingMinutes ? `Stojí za přečtení · ${item.readingMinutes} min` : presentationLabel[item.presentation] ?? null;
+  return <article className={`card tap ${item.presentation} ${state.read ? "read" : ""}`} onClick={() => onOpen(feed)}>
+    <div className="meta"><span>{provenance?.sourceName ?? "Zdroj"}</span><span className="dot">·</span><span>{formatDate(provenance?.publishedAt ?? null)}</span>{feed.groups.includes("school") && <b>Škola</b>}</div>
+    <Shot image={item.image} seed={provenance?.sourceName ?? item.headline} alt={item.headline} />
+    <div className="actions" onClick={(event) => event.stopPropagation()}>
+      <button className={state.read ? "selected" : ""} onClick={() => void onState(feed, { read: !state.read })} aria-label={state.read ? "Označit jako nepřečtené" : "Označit jako přečtené"} aria-pressed={state.read}>✓</button>
+      <button className={state.saved ? "selected" : ""} onClick={() => void onState(feed, { saved: !state.saved })} aria-label={state.saved ? "Odebrat z uložených" : "Uložit na později"} aria-pressed={state.saved}>{state.saved ? "♥" : "♡"}</button>
+      <button onClick={() => void onState(feed, { hidden: true })} aria-label="Skrýt z výběru">⌄</button>
+      <span className="spacer" />
+    </div>
+    {item.presentation === "distilled_fact" && item.distilledText ? <p className="fact">{item.distilledText}</p> : <><h2>{item.headline}</h2><p className="lede">{item.summary}</p></>}
+    {label && <p className="kicker">{label}</p>}
+  </article>;
+}
 
-function Inbox({ data, reload, notice, onHide }: { data: Bootstrap | null; reload: () => Promise<void>; notice: (text: string) => void; onHide: (entry: InboxEntry) => Promise<void> }) {
+/** Deterministický odstín podle zdroje, aby položka bez obrázku držela rytmus feedu a stejný zdroj stejnou barvu. */
+function hue(seed: string): number {
+  let value = 0;
+  for (const character of seed) value = (value * 31 + character.codePointAt(0)!) % 3600;
+  return value / 10;
+}
+function Shot({ image, seed, alt }: { image: EditorialItem["image"]; seed: string; alt: string }) {
+  if (image) return <div className="shot"><img src={image.url} alt={image.alt || alt} loading="lazy" decoding="async" referrerPolicy="no-referrer" width={image.width ?? undefined} height={image.height ?? undefined} /></div>;
+  const base = hue(seed);
+  return <div className="shot blank" style={{ background: `linear-gradient(135deg, hsl(${base} 52% 42%), hsl(${(base + 42) % 360} 48% 30%))` }} aria-hidden="true"><span>{seed}</span></div>;
+}
+
+/** Detail je vrstva nad feedem: ukazuje jen to, co skutečně máme, originál je poslední krok (ADR-014). */
+function Detail({ feed, onState, onClose }: { feed: FeedItem; onState: (item: FeedItem, patch: { read?: boolean; saved?: boolean; hidden?: boolean }) => Promise<void>; onClose: () => void }) {
+  const { item, state } = feed;
+  const provenance = item.provenance[0];
+  useEffect(() => {
+    if (!state.read) void onState(feed, { read: true });
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener("keydown", escape);
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.removeEventListener("keydown", escape); document.body.style.overflow = previous; };
+    // Efekt patří k otevřené položce; přepnutí na jinou ho spustí znovu, změna callbacků ne.
+  }, [item.id]);
+  return <div className="sheet" role="dialog" aria-modal="true" aria-label={item.headline}>
+    <div className="sheet-bar"><button onClick={onClose} aria-label="Zpět na výběr">←</button><strong>{provenance?.sourceName ?? "Zdroj"}</strong></div>
+    <div className="sheet-body">
+      <Shot image={item.image} seed={provenance?.sourceName ?? item.headline} alt={item.headline} />
+      <h1>{item.headline}</h1>
+      {item.presentation === "distilled_fact" && item.distilledText && <p className="fact">{item.distilledText}</p>}
+      <p className="summary">{item.summary}</p>
+      {provenance?.title && provenance.title !== item.headline && <p className="source-lede"><strong>Původní titulek:</strong> {provenance.title}</p>}
+      {item.topics.length > 0 && <div className="topics">{item.topics.map((topic) => <span key={topic}>{topic}</span>)}</div>}
+      <div className="sheet-actions">
+        <button className={state.saved ? "selected" : ""} onClick={() => void onState(feed, { saved: !state.saved })} aria-pressed={state.saved}>{state.saved ? "♥ Uloženo" : "♡ Uložit"}</button>
+        <button className={state.read ? "selected" : ""} onClick={() => void onState(feed, { read: !state.read })} aria-pressed={state.read}>{state.read ? "✓ Přečteno" : "Označit přečtené"}</button>
+      </div>
+      <div className="origin">
+        <h3>Původ</h3>
+        <p>{provenance?.sourceName} · {formatDate(provenance?.publishedAt ?? null)}</p>
+        <p>{provenance?.canonicalUrl}</p>
+        <p>Shrnutí sestavil váš AI editor. Podklad: {basisLabel[item.assessment?.basis ?? "metadata"]}.</p>
+        {item.whyIncluded && <p>Proč to vidíte: {item.whyIncluded}</p>}
+      </div>
+      {provenance?.canonicalUrl && <a className="primary leave" href={provenance.canonicalUrl} target="_blank" rel="noopener noreferrer">Otevřít originál na webu zdroje ↗</a>}
+    </div>
+  </div>;
+}
+
+function Inbox({ data, reload, notice, onHide }: { data: Bootstrap | null; reload: () => Promise<void>; notice: (text: string) => void; onHide: (entry: InboxEntry, hidden: boolean) => Promise<void> }) {
   const [input, setInput] = useState<SharedInput>({ url: "", title: "", text: "" });
   const [fullText, setFullText] = useState(false);
   const [busy, setBusy] = useState(false);
   const [shown, setShown] = useState(20);
+  const [showHidden, setShowHidden] = useState(false);
   const submit = async (event: React.FormEvent) => { event.preventDefault(); setBusy(true); try { await api.addArticle({ ...input, fullText }); setInput({ url: "", title: "", text: "" }); setFullText(false); notice("Položka čeká v inboxu na zpracování."); await reload(); } catch (reason) { notice(message(reason)); } finally { setBusy(false); } };
-  const waiting = useMemo(() => [...pending(data)].sort((left, right) => (right.candidate.publishedAt ?? right.candidate.discoveredAt).localeCompare(left.candidate.publishedAt ?? left.candidate.discoveredAt)), [data]);
+  const waiting = useMemo(() => [...(showHidden ? (data?.inbox ?? []).filter((entry) => entry.state.hidden) : pending(data))].sort((left, right) => (right.candidate.publishedAt ?? right.candidate.discoveredAt).localeCompare(left.candidate.publishedAt ?? left.candidate.discoveredAt)), [data, showHidden]);
   const names = useMemo(() => new Map((data?.sources ?? []).map((entry) => [entry.id, entry.name])), [data]);
+  const hiddenCount = (data?.inbox ?? []).filter((entry) => entry.state.hidden).length;
   return <Page title="Inbox" eyebrow="RUČNÍ PŘÍJEM"><p className="intro">Vložte odkaz nebo vlastní text. Nic se nevydává za AI výběr, dokud to neprojde vaším workflow.</p><form onSubmit={submit}><label>Odkaz<input type="url" value={input.url} onChange={(event) => setInput({ ...input, url: event.target.value })} placeholder="https://…" /></label><label>Název <em>volitelné</em><input value={input.title} onChange={(event) => setInput({ ...input, title: event.target.value })} /></label><label>Text <em>volitelné</em><textarea rows={6} value={input.text} onChange={(event) => { const text = event.target.value; setInput({ ...input, text }); if (!text) setFullText(false); }} /></label><label className="full-text"><input type="checkbox" checked={fullText} disabled={!input.text} onChange={(event) => setFullText(event.target.checked)} />Vkládám celý text článku</label><button className="primary" disabled={busy || (!input.url && !input.text)}>Přidat do inboxu</button></form>
-    <div className="waiting"><h2>Čeká na zpracování</h2><p className="hint">{waiting.length ? `${waitingLabel(waiting.length)}. Zobrazeny jsou názvy a úryvky od zdroje; shrnutí vzniká až v AI editoru.` : "Zatím nic nečeká. Načtěte zdroj nebo vložte odkaz výše."}</p></div>
+    <div className="waiting"><h2>{showHidden ? "Skryté položky" : "Čeká na zpracování"}</h2><p className="hint">{showHidden ? "Skryté položky AI editor nevybírá. Šipkou je vrátíte mezi čekající." : waiting.length ? `${waitingLabel(waiting.length)}. Zobrazeny jsou názvy a úryvky od zdroje; shrnutí vzniká až v AI editoru.` : "Zatím nic nečeká. Načtěte zdroj nebo vložte odkaz výše."}</p>{hiddenCount > 0 && <button className="quiet" onClick={() => { setShowHidden(!showHidden); setShown(20); }}>{showHidden ? "← Zpět na čekající" : `Zobrazit skryté (${hiddenCount})`}</button>}</div>
     {waiting.length > 0 && <div className="cards">{waiting.slice(0, shown).map((entry) => <PendingCard key={entry.candidate.id} entry={entry} source={entry.candidate.sourceId === "manual" ? "Ručně vloženo" : names.get(entry.candidate.sourceId) ?? "Odebraný zdroj"} onHide={onHide} />)}</div>}
     {waiting.length > shown && <button className="quiet more" onClick={() => setShown(shown + 20)}>Zobrazit dalších {Math.min(20, waiting.length - shown)}</button>}
   </Page>;
 }
-function PendingCard({ entry, source, onHide }: { entry: InboxEntry; source: string; onHide: (entry: InboxEntry) => Promise<void> }) {
-  const { candidate } = entry;
-  return <article className="card waiting-card"><div className="meta"><span>{source}</span><span>{formatDate(candidate.publishedAt)}</span>{candidate.access !== "full" && <b className="partial">bez plného textu</b>}</div><h2>{candidate.title || candidate.canonicalUrl}</h2>{candidate.excerpt && <p className="clamp">{candidate.excerpt}</p>}<div className="footer"><small>Čeká na redakční zpracování</small><div><button onClick={() => void onHide(entry)} aria-label="Skrýt z inboxu">⋯</button></div></div><a href={candidate.canonicalUrl} target="_blank" rel="noopener noreferrer">Otevřít originál ↗</a></article>;
+function PendingCard({ entry, source, onHide }: { entry: InboxEntry; source: string; onHide: (entry: InboxEntry, hidden: boolean) => Promise<void> }) {
+  const { candidate, state } = entry;
+  return <article className={`card waiting-card ${state.hidden ? "read" : ""}`}>
+    <div className="meta"><span>{source}</span><span className="dot">·</span><span>{formatDate(candidate.publishedAt)}</span>{candidate.access !== "full" && <b>bez plného textu</b>}</div>
+    <Shot image={candidate.image} seed={source} alt={candidate.title} />
+    <div className="actions">
+      <a className="quiet" href={candidate.canonicalUrl} target="_blank" rel="noopener noreferrer" aria-label="Otevřít originál">Otevřít originál ↗</a>
+      <span className="spacer" />
+      <button onClick={() => void onHide(entry, !state.hidden)} aria-label={state.hidden ? "Vrátit mezi čekající" : "Skrýt z inboxu"} aria-pressed={state.hidden}>{state.hidden ? "↺" : "⌄"}</button>
+    </div>
+    <h2>{candidate.title || candidate.canonicalUrl}</h2>
+    {candidate.excerpt && <p className="lede">{candidate.excerpt}</p>}
+  </article>;
 }
+
 function ShareBox({ value, update, accept, dismiss }: { value: SharedInput; update: (value: SharedInput) => void; accept: () => void; dismiss: () => void }) { return <aside className="share"><p>PŘEDAT DO SIFTERY</p><h2>Přidat sdílený obsah?</h2><label>Název<input value={value.title} onChange={(event) => update({ ...value, title: event.target.value })} /></label><label>Odkaz<input value={value.url} onChange={(event) => update({ ...value, url: event.target.value })} /></label><label>Poznámka<textarea rows={3} value={value.text} onChange={(event) => update({ ...value, text: event.target.value })} /></label><button className="primary" onClick={accept}>Potvrdit do inboxu</button><button className="quiet" onClick={dismiss}>Zahodit</button></aside>; }
 
 function Sources({ data, reload, notice }: { data: Bootstrap | null; reload: () => Promise<void>; notice: (text: string) => void }) {

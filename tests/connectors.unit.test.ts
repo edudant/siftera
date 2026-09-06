@@ -132,3 +132,42 @@ describe("safe HTTP", () => {
 it("extracts safe plain text from ordinary HTML", () => {
   expect(extractHtmlText("<h1>A &amp; B</h1><style>hidden</style><p>Visible</p>")).toBe("A & B Visible");
 });
+
+describe("feed images", () => {
+  it("reads an RSS enclosure image and rejects a non-image enclosure", async () => {
+    const feed = `<?xml version="1.0"?><rss version="2.0"><channel><title>F</title>
+      <item><title>With image</title><link>https://example.com/a</link>
+        <enclosure url="https://cdn.example.com/a.jpg?itok=x" type="image/jpeg" length="1234" /></item>
+      <item><title>Audio only</title><link>https://example.com/b</link>
+        <enclosure url="https://cdn.example.com/b.mp3" type="audio/mpeg" /></item>
+      </channel></rss>`;
+    const result = await new RssAtomConnector(http(feed)).collect({ ...source, url: "https://example.com/rss" });
+    expect(result.inputs[0]?.image).toEqual({ url: "https://cdn.example.com/a.jpg?itok=x", width: null, height: null, alt: "" });
+    expect(result.inputs[1]?.image).toBeNull();
+  });
+
+  it("reads media:content with dimensions and resolves a relative Atom image against xml:base", async () => {
+    const rss = `<?xml version="1.0"?><rss version="2.0"><channel><title>F</title>
+      <item><title>Media</title><link>https://example.com/a</link>
+        <media:content url="https://cdn.example.com/m.jpg" medium="image" width="800" height="450" /></item>
+      </channel></rss>`;
+    const withMedia = await new RssAtomConnector(http(rss)).collect({ ...source, url: "https://example.com/rss" });
+    expect(withMedia.inputs[0]?.image).toEqual({ url: "https://cdn.example.com/m.jpg", width: 800, height: 450, alt: "" });
+
+    const atom = `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><title>F</title>
+      <entry xml:base="https://example.com/posts/"><title>Relative</title><link href="https://example.com/posts/a" />
+        <media:thumbnail url="thumb.png" /></entry></feed>`;
+    const relative = await new RssAtomConnector(http(atom, "application/atom+xml")).collect({ ...source, url: "https://example.com/atom" });
+    expect(relative.inputs[0]?.image?.url).toBe("https://example.com/posts/thumb.png");
+  });
+
+  it("drops an unsafe image URL instead of failing the whole entry", async () => {
+    const feed = `<?xml version="1.0"?><rss version="2.0"><channel><title>F</title>
+      <item><title>Private host</title><link>https://example.com/a</link>
+        <enclosure url="http://127.0.0.1/secret.jpg" type="image/jpeg" /></item>
+      </channel></rss>`;
+    const result = await new RssAtomConnector(http(feed)).collect({ ...source, url: "https://example.com/rss" });
+    expect(result.inputs).toHaveLength(1);
+    expect(result.inputs[0]?.image).toBeNull();
+  });
+});

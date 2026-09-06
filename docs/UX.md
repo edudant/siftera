@@ -2,11 +2,15 @@
 
 ## Vzhled a navigace
 
-Mobile-first, šířka hlavního sloupce max.680px, pozadí teplé světle šedé, bílé karty, tmavý text a tlumený zelený akcent. Kontrast AA, žádná neonová dashboard estetika. Nadpisy výrazné, tělo16–18px/1.5, system font stack; bez povinného font CDN. Dark mode respektuje systém a ruční přepnutí. Vzhled inspirovaný pestrým feeeed, nikoli kopie jeho assetů.
+Mobile-first, šířka hlavního sloupce max.680px. Vizuální jazyk je obrazový feed instagramového typu (ADR-014), nikoli seznam odkazů: souvislý scroll, karty bez rámečků oddělené jen mezerou a vlasovou linkou, obraz přes celou šířku sloupce. Sociální mechanika se nepřebírá — žádné komentáře, veřejné lajky, sdílení, profily ani počty. Barevný režim se řídí systémem (`prefers-color-scheme`) v obou směrech; světlá i tmavá varianta musí držet kontrast AA včetně textu nad obrazem. Nadpisy výrazné, tělo16–18px/1.5, system font stack; bez povinného font CDN.
 
-Spodní navigace: **Dnes / Knihovna / Uložené / Nastavení**. Horní lišta Dnes: Siftera, datum vydání, search button. Horizontální chips Vše, Škola (badge unread), Články, Video, Poslech; ne všechna témata najednou. Další filtry v bottom sheetu. Na desktopu stejná informační struktura s levým úzkým navigation sloupcem.
+Obraz je nosný prvek karty: poměr16:9, `object-fit: cover`, vždy rezervovaná výška proti CLS. Načítá se přímo z domény zdroje s `loading="lazy"`, `decoding="async"` a `referrerpolicy="no-referrer"`; obrázky se neproxují ani nehostují. Zdroj bez obrázků je normální stav, ne chyba — fallback je typografická karta s barevným podkladem odvozeným deterministicky od zdroje, aby feed nebyl děravý a aby se stejný zdroj držel stejné barvy.
+
+Spodní navigace: **Dnes / Knihovna / Inbox / Uložené / Nastavení**. Horní lišta Dnes: Siftera, datum vydání, search. Horizontální chips Vše, Škola (badge unread), Články, Video, Poslech; ne všechna témata najednou. Další filtry v bottom sheetu. Na desktopu stejná informační struktura s levým úzkým navigation sloupcem.
 
 Dnes zobrazuje poslední publikovaný run v redakčním pořadí. Škola chip vede do knihovny s group=school, kde se zobrazí všechny automaticky publikované zprávy. Badge musí fungovat i bez AI runu. Knihovna má chronologii/relevanci, zdroj/téma/typ/datum/read/saved filtry; saved je také rychlý samostatný vstup. Audience browsing je odstraněn.
+
+Vizuální jazyk platí pro celou aplikaci, ne jen pro Dnes. Knihovna, Uložené i čekající položky v Inboxu používají stejnou kartu; liší se hustotou a doprovodným textem, nikoli tvarem.
 
 ## Karty
 
@@ -14,7 +18,7 @@ Všechny renderery dostávají `FeedItem`. Společné prvky: zdroj, datum, headl
 
 | Presentation | Obsah a hlavní akce |
 |---|---|
-| article | obrázek16:9 nebo kompaktní bezobrázková karta, nadpis/perex, otevřít detail |
+| article | obraz16:9 přes celou šířku, pod ním akce, nadpis a perex; bez obrázku typografický fallback |
 | long_read | větší nadpis, delší perex, odhad času, viditelné „Stojí za přečtení“ |
 | distilled_fact | velký krátký text, decentní téma, dole malý dohledatelný zdroj; žádné „klikni pro pointu“ |
 | school_notice | datum oznámení, text, případné rozlišené úkol/test/učivo, jasně odlišit tip AI |
@@ -26,11 +30,15 @@ Media a platforma jsou samostatné od prezentace a témat. YouTube external ID v
 
 ## Detail, čtení a feedback
 
-Tap karty otevře detail se shrnutím a originálem; article detail může zobrazit plain text full content bezpečně formátovaný bez zdrojového HTML. Po návratu zachovat přesnou pozici feedu. Otevření originálu v nové kartě s noopener/noreferrer a jasným cílem.
+Tap kdekoli na kartě otevře celoobrazovkový detail uvnitř aplikace: obraz, headline, redakční shrnutí, perex od zdroje, témata a původ. Detail je vlastní vrstva nad feedem, ne nová stránka — otevření i zavření zachová přesnou pozici feedu a nepřenačítá data. Zavřít lze tlačítkem i gestem zpět; gesto nikdy není jediná cesta.
 
-Stav read je samostatný: otevření detailu/originálu označí read, pouhé projetí karty scrollováním ne. U distilled_fact a school_notice je viditelná malá akce „Přečteno“, protože není nutné otevírat detail. Lze vrátit na unread. Přečtená karta se během aktivního scrollu jen ztlumí, nezmizí a nepřeskládá okolí; filtr se znovu uplatní při explicitním refresh/navigaci.
+Vestavěný prohlížeč cizího webu není součástí produktu a nebude se předstírat: zpravodajské weby zakazují vkládání do rámu (ADR-014). Dokud ingest neuloží plný text, detail nabízí odchod na originál jako poslední krok, jasně označený jako opuštění Siftery, s `noopener`/`noreferrer`. Jakmile je k dispozici `access: full`, detail zobrazí uložený plain text bezpečně formátovaný bez zdrojového HTML a odkaz ustoupí do pozadí.
 
-Menu: „Více podobného“, „Jsem rád, že jsem to viděl“, „Méně podobného“, „Dobrý objev“, „Skrýt“, „Proč to vidím / Zdroj“. More/less dovoluje volitelně upřesnit položku/téma/zdroj v druhém kroku, ale výchozí akce bez povinného dialogu target=item. Volný komentář≤500 znaků. Save/read/hide jsou stavové přepínače a nekladou otázku na preference.
+Stav read je samostatný: otevření detailu nebo originálu označí read, pouhé projetí karty scrollováním ne. U distilled_fact a school_notice je viditelná malá akce „Přečteno“, protože není nutné otevírat detail. Lze vrátit na unread. Přečtená karta se během aktivního scrollu jen ztlumí, nezmizí a nepřeskládá okolí; filtr se znovu uplatní při explicitním refresh/navigaci.
+
+Akce na kartě jsou tři a jsou to stavové přepínače vlastního prostoru, ne signály pro ostatní: přečteno, uložit, skrýt. Skryté položky musí jít znovu zobrazit — jednosměrné skrytí bez cesty zpět není přijatelné.
+
+Menu: „Více podobného“, „Jsem rád, že jsem to viděl“, „Méně podobného“, „Dobrý objev“, „Skrýt“, „Proč to vidím / Zdroj“. More/less dovoluje volitelně upřesnit položku/téma/zdroj v druhém kroku, ale výchozí akce bez povinného dialogu target=item. Volný komentář≤500 znaků zůstává soukromou poznámkou pro vlastní AI editor; nikde se nezveřejňuje. Save/read/hide jsou stavové přepínače a nekladou otázku na preference.
 
 Provenance detail: zdrojový titulek, URL, datum, „AI shrnutí“, basis „celý dostupný text / výňatek / pouze metadata“, případně „Plný text nedostupný“. Hodnoticí čísla schovat do detailu; nevytvářet vizuální dojem ověřené pravdy.
 

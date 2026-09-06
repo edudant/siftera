@@ -2,6 +2,16 @@
 
 Status accepted, v1, 2026-09-06. Tento soubor uzavírá doporučené volby; změny vyžadují konkrétní důvod a dopad, nikoli opakované obecné porovnávání stacků.
 
+## ADR-014 Vizuální feed místo čtečky, bez sociálního rozměru
+
+6. 9. uživatel odmítl dosavadní vzhled jako „RSS čtečku" a požaduje look & feel Instagramu, Facebooku a TikToku — **výslovně bez sociálních prvků**. Žádné komentáře, lajky viditelné druhým, sdílení, profily, sledující ani jakýkoli signál od jiných lidí. Siftera zůstává jednouživatelský prostor; převzat je vizuální a ovládací jazyk, ne sociální mechanika. Existující stavy read/save/hide se nepřeznačují na „engagement" a nikam se neodesílají.
+
+Zvolen je souvislý obrazový feed instagramového typu: karta bez rámečku, obraz přes celou šířku, akce pod obrazem, plynulý scroll. Fullscreen snap-scroll typu TikTok byl zvážen a odmítnut — jedna zpráva na obrazovku je pro denní výběr 10 položek příliš pomalá. Barevný režim se řídí systémem, nikoli natvrdo tmavým podkladem.
+
+Obrazový feed vyžaduje obrázky, které dosud nikde nekončily: RSS konektor `<enclosure>` a `media:*` vůbec nečetl a `EditorialService.ingest` navíc zahazoval `image`/`media` natvrdo na `null`, přestože `IngestInput` i `Candidate` je nesou. Obojí se opravuje; jde o doplnění existujícího kontraktu, ne o jeho změnu. Obrázky se nehostují ani neproxují — načítají se přímo z původní domény jako `loading="lazy"` a `referrerpolicy="no-referrer"`, aby se čtenářské návyky neposílaly do zdrojů v Refereru. Zdroje bez obrázků (ověřeno na ČT24) musí zůstat plnohodnotné: fallback je typografická karta, ne prázdné místo.
+
+Položka se otevírá do celoobrazovkového detailu uvnitř aplikace. Vestavěný prohlížeč po vzoru Facebooku není ve webové PWA dosažitelný: ověřeno 6. 9., že ČT24 posílá `X-Frame-Options: DENY` s `frame-ancestors 'self'` a iROZHLAS i Root.cz `SAMEORIGIN`. Facebook to obchází nativním WebView, který tyto hlavičky ignoruje; web takovou možnost nemá a obcházení se nezkouší. Detail proto ukazuje, co skutečně vlastníme — obraz, titulek, redakční shrnutí, perex od zdroje a původ — a na cizí text odkazuje ven. Až bude ingest ukládat plný text (`access: full`), detail ho zobrazí místo odkazu; do té doby se nepředstírá, že článek máme.
+
 ## ADR-013 Rychlý online prototyp a vstupní pluginy
 
 6. 9. uživatel upřednostnil první internetový/mobilní prototyp před dokonalým dokončením milníků a výslovně požaduje oddělené vstupy, AI job a UI. Vstupy proto implementují ConnectorRegistry a normalizují do existujícího ingestu; ruční URL/text je rovnocenný RSS. Hosted prototyp přidává D1/R2 a Sites identity adaptéry, aby nevyžadoval nový placený cloudový projekt. Core ani existující Firebase implementace se nezahazují. UI je přenositelné na statický hosting, včetně uživatelem zmíněného GitHub Pages, ale potřebuje externí API. První job je explicitní export/import pro vlastní AI klient, nikoli předstíraná automatická AI.

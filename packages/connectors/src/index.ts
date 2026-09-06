@@ -209,6 +209,37 @@ const parser = new XMLParser({
   trimValues: false,
 });
 
+/** Obrázek nesou feedy jako enclosure, media:content, media:thumbnail nebo itunes:image; bereme první bezpečný. */
+function feedImage(item: Record<string, unknown>, base: string): NonNullable<IngestInput["image"]> | null {
+  for (const key of ["enclosure", "media:content", "media:thumbnail", "itunes:image", "image"]) {
+    for (const entry of asList(field(item, key))) {
+      const record = asRecord(entry);
+      if (!record) continue;
+      const type = text(record["@type"]).toLowerCase();
+      const medium = text(record["@medium"]).toLowerCase();
+      if (type && !type.startsWith("image/")) continue;
+      if (medium && medium !== "image") continue;
+      const href = text(record["@url"]) || text(record["@href"]) || text(record["url"]);
+      if (!href) continue;
+      let url: string;
+      try {
+        url = assertSafePublicUrl(href, base).toString();
+      } catch {
+        continue;
+      }
+      const width = Number.parseInt(text(record["@width"]), 10);
+      const height = Number.parseInt(text(record["@height"]), 10);
+      return {
+        url,
+        width: Number.isInteger(width) && width > 0 ? width : null,
+        height: Number.isInteger(height) && height > 0 ? height : null,
+        alt: bounded(text(record["@alt"]) || text(record["@title"]), 500).value,
+      };
+    }
+  }
+  return null;
+}
+
 function rejectUnsafeXml(xml: string): void {
   if (/<!\s*(doctype|entity)\b/iu.test(xml))
     throw new ConnectorError("INVALID_FEED", "DTD and entities are not supported");
@@ -253,6 +284,7 @@ function rssItem(source: ConnectorSource, item: Record<string, unknown>, feedUrl
           })
           .filter(Boolean),
         medium: "text",
+        image: feedImage(item, feedUrl),
         // Feed text is metadata unless a later content fetch establishes full access.
         access: content ? "partial" : "unavailable",
       },
@@ -289,6 +321,7 @@ function atomItem(source: ConnectorSource, item: Record<string, unknown>, feedUr
           })
           .filter(Boolean),
         medium: "text",
+        image: feedImage(item, base),
         access: content ? "partial" : "unavailable",
       },
       "rss",
