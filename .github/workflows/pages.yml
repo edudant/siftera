@@ -27,6 +27,8 @@ jobs:
           node-version: 24.12.0
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Typecheck čte typy balíčků z jejich dist; bez buildu hlásí desítky implicitních any.
+      - run: pnpm build
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
