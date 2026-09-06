@@ -234,6 +234,21 @@ function matchesCategory(item: FeedItem, category: FeedCategory): boolean {
   if (category.topics.some((topic) => item.item.topics.includes(topic))) return true;
   return category.sourceIds.some((sourceId) => item.item.provenance.some((entry) => entry.sourceId === sourceId));
 }
+/**
+ * Položka, kterou uživatel právě přečetl, ze serverového proudu vypadne. Ve feedu ale musí zůstat na svém
+ * místě a jen zešednout — jinak se pod rukama přeskládá okolí a čtenář ztratí kontext (UX: filtr se znovu
+ * uplatní až při explicitním obnovení). Proto se drží dřívější pořadí a chybějící se do něj vrací.
+ */
+function keepOrder(previous: string[], current: string[]): string[] {
+  if (!previous.length) return current;
+  const fresh = new Set(current);
+  const order = [...current];
+  previous.forEach((id, index) => {
+    if (fresh.has(id)) return;
+    order.splice(Math.min(index, order.length), 0, id);
+  });
+  return order;
+}
 function stamp(item: FeedItem): number {
   const at = item.item.provenance[0]?.publishedAt ?? item.item.createdAt;
   const value = new Date(at).getTime();
@@ -243,13 +258,22 @@ function stamp(item: FeedItem): number {
 function FeedView({ data, setTab, onState, onHide, onOpen, modes, names, filter, setFilter, panel, setPanel }: { data: Bootstrap | null; setTab: (tab: Tab) => void; onState: (item: FeedItem, patch: { read?: boolean; saved?: boolean; hidden?: boolean }) => Promise<void>; onHide: (entry: InboxEntry, hidden: boolean) => Promise<void>; onOpen: (feed: FeedItem) => void; modes: Map<string, ImageMode>; names: Map<string, string>; filter: FeedFilter; setFilter: (filter: FeedFilter) => void; panel: boolean; setPanel: (open: boolean) => void }) {
   const categories = data?.preferences.categories ?? [];
   const category = categories.find((entry) => entry.id === filter.categoryId) ?? null;
+  // Přepnutí pohledu je nový seznam; do té doby si feed drží pořadí, aby pod rukama nemizely položky.
+  const viewKey = `${filter.mode}|${filter.categoryId ?? ""}|${filter.sort}`;
+  const held = useRef<{ key: string; ids: string[] }>({ key: viewKey, ids: [] });
+  if (held.current.key !== viewKey) held.current = { key: viewKey, ids: [] };
   const items = useMemo(() => {
     const base = filter.mode === "curated" ? data?.stream ?? []
       : filter.mode === "saved" ? (data?.library ?? []).filter((entry) => entry.state.saved)
       : data?.library ?? [];
     const filtered = category ? base.filter((item) => matchesCategory(item, category)) : base;
-    return filter.sort === "newest" ? [...filtered].sort((left, right) => stamp(right) - stamp(left)) : filtered;
-  }, [data, filter, category]);
+    const current = filter.sort === "newest" ? [...filtered].sort((left, right) => stamp(right) - stamp(left)) : filtered;
+    const known = new Map((data?.library ?? []).concat(data?.stream ?? []).map((entry) => [entry.item.id, entry]));
+    const order = keepOrder(held.current.ids, current.map((entry) => entry.item.id));
+    const resolved = order.map((id) => known.get(id)).filter((entry): entry is FeedItem => Boolean(entry));
+    held.current = { key: viewKey, ids: resolved.map((entry) => entry.item.id) };
+    return resolved;
+  }, [data, filter, category, viewKey]);
   const waiting = filter.mode === "all" ? pending(data) : [];
   const showNote = filter.mode === "curated";
   return <section>
