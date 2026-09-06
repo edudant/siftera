@@ -70,7 +70,22 @@ export interface DraftData {
   proposals: EditorialProposal[];
   batches: DraftBatch[];
   contentReads: ContentReadReceipt[];
+  articleReads?: ArticleRead[];
 }
+export interface ArticlePage {
+  text: string;
+  title: string | null;
+  access: "full" | "partial" | "unavailable";
+  paywall: boolean;
+  truncated: boolean;
+}
+export interface ArticleRead extends ArticlePage {
+  candidateId: string;
+  revision: number;
+  status: "pending" | "ready" | "failed";
+  fetchedAt: string;
+}
+export interface ArticleReader { read(url: string): Promise<ArticlePage>; }
 export interface FeedPointer {
   latestRunId: string | null;
   activeRunId: string | null;

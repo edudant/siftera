@@ -2,34 +2,50 @@
 
 ## Vzhled a navigace
 
-Mobile-first, šířka hlavního sloupce max.680px. Vizuální jazyk je obrazový feed instagramového typu (ADR-014), nikoli seznam odkazů: souvislý scroll, karty bez rámečků oddělené jen mezerou a vlasovou linkou, obraz přes celou šířku sloupce. Sociální mechanika se nepřebírá — žádné komentáře, veřejné lajky, sdílení, profily ani počty. Barevný režim se řídí systémem (`prefers-color-scheme`) v obou směrech; světlá i tmavá varianta musí držet kontrast AA včetně textu nad obrazem. Nadpisy výrazné, tělo16–18px/1.5, system font stack; bez povinného font CDN.
+Mobile-first, šířka hlavního sloupce max.680px. Vizuální jazyk je obrazový feed sociální sítě (ADR-014), nikoli seznam odkazů ani noviny: souvislý scroll, karty bez rámečků oddělené jen mezerou a vlasovou linkou, hustota taková, aby se na obrazovku vešly aspoň dvě položky. Sociální mechanika se nepřebírá — žádné komentáře, veřejné lajky, sdílení, profily ani počty. Barevný režim se řídí systémem (`prefers-color-scheme`) v obou směrech; světlá i tmavá varianta musí držet kontrast AA.
 
-Obraz je nosný prvek karty: poměr16:9, `object-fit: cover`, vždy rezervovaná výška proti CLS. Načítá se přímo z domény zdroje s `loading="lazy"`, `decoding="async"` a `referrerpolicy="no-referrer"`; obrázky se neproxují ani nehostují. Zdroj bez obrázků je normální stav, ne chyba — fallback je typografická karta s barevným podkladem odvozeným deterministicky od zdroje, aby feed nebyl děravý a aby se stejný zdroj držel stejné barvy.
+**Typografie je bezpatková, včetně nadpisů.** Patkové písmo čte jako novinový titulek a je to nejsilnější jednotlivý signál čtečky; serif zůstává jen tam, kde nese hlas — u `distilled_fact`. Nadpis je tučný text, ne titulek.
 
-Spodní navigace: **Dnes / Knihovna / Inbox / Uložené / Nastavení**. Horní lišta Dnes: Siftera, datum vydání, search. Horizontální chips Vše, Škola (badge unread), Články, Video, Poslech; ne všechna témata najednou. Další filtry v bottom sheetu. Na desktopu stejná informační struktura s levým úzkým navigation sloupcem.
+**Zdroj má tvář.** Každá položka nese kruhový avatar zdroje: favicona z domény (`/favicon.ico`, lazy, `no-referrer`), a když chybí, monogram s barvou odvozenou od názvu — ověřeno, že ČT24 faviconu nemá, zatímco pět dalších českých zdrojů ano. Avatar je to, čím se zdroj čte jako někdo, kdo mluví, ne jako řádek metadat. Čas je ve feedu relativní („teď“, „6 h“, „včera“), absolutní datum až u starších položek.
 
-Dnes zobrazuje poslední publikovaný run v redakčním pořadí. Škola chip vede do knihovny s group=school, kde se zobrazí všechny automaticky publikované zprávy. Badge musí fungovat i bez AI runu. Knihovna má chronologii/relevanci, zdroj/téma/typ/datum/read/saved filtry; saved je také rychlý samostatný vstup. Audience browsing je odstraněn.
+**Spodní lišta neexistuje.** Veškerá navigace je v horní hlavičce, která má dva řádky: identita a akce (hledat, přidat, nastavení), pod nimi přepínač pohledu **Výběr · Vše · Uložené** a ikona řazení a filtrů. Uložené je pohled feedu, ne samostatná obrazovka. Hlavička je přilepená, ale při rolování dolů uhne a při prvním pohybu zpět nahoru se hned vrátí — ovládání je po ruce, aniž by trvale ukusovalo výšku, a obsah získá celou spodní část displeje.
+
+Ikony se kreslí jako SVG, nepíšou jako znaky: textové glyfy mají na každé platformě jinou šířku i optickou váhu. Sada má jednu tloušťku tahu a velikost dědí z rodiče; cílová plocha ovládacích prvků je nejméně44×44px. Značka je stylizované síto — tři klesající pruhy, poslední v akcentní barvě — a stejný tvar nese i ikona aplikace.
+
+Hledání není každodenní akce, takže v liště sedí jako lupa; teprve tap ji rozvine v pole přes celý řádek a zavře se křížkem. Feed nemá hlavičku vydání — proud začíná obsahem a poznámka nad ním říká, kolik je nepřečteného.
+
+Obraz je jedna z možností, ne povinnost. Načítá se přímo z domény zdroje s `loading="lazy"`, `decoding="async"` a `referrerpolicy="no-referrer"`; obrázky se neproxují ani nehostují. Zdroj bez obrázků je normální stav — položka pak dostane textovou kartu, nikoli vymyšlenou barevnou výplň, protože zástupný gradient jen předstírá obsah, který nemáme.
+
+Feed je jeden a přepínají se v něm pohledy (ADR-016). **Výběr** je redakční proud, **Vše** ukáže i položky, které redakcí neprošly, takže Inbox jako samostatná obrazovka zanikl. Režim je v tabech v hlavičce, protože se přepíná často; řazení (podle výběru / od nejnovějších) a kategorie jsou v panelu za ikonou, aby nezabíraly výšku.
+
+**Kategorie definuje uživatel, ne editor.** Kategorie je pojmenovaný filtr nad tématy a zdroji, který si člověk složí v Nastavení; témata od editora jsou pro filtrování příliš roztříštěná (měřeno: 55 témat na 40 položek). Kategorie žijí v preferencích, takže je editor v jobu vidí jako informaci o tom, co uživatele zajímá.
+
+Výběr není vydání, ale **proud nepřečteného** (ADR-015): publikované položky napříč vydáními, které uživatel nepřečetl ani neskryl a nejsou starší než14 dní, seřazené relevancí s útlumem podle stáří. Režim Vše je zároveň archiv: najde se v něm i přečtené a to, co z proudu vypadlo stářím. Čtení má dva stupně: **viděno** nastaví klient, když karta byla aspoň z poloviny ve viewportu déle než vteřinu — položka pak jen klesne v pořadí, nikdy nezmizí; **přečteno** zůstává explicitní, tedy otevření originálu nebo rozbalení. Prázdný proud znamená hotovo a musí to říct lidsky s odkazem na Uložené nebo Inbox, ne vypadat jako porucha.
+
+Dřívější chování zobrazovalo poslední publikovaný run v redakčním pořadí. Škola chip vede do knihovny s group=school. Knihovna má chronologii/relevanci, zdroj/téma/typ/datum/read/saved filtry; saved je také rychlý samostatný vstup. Audience browsing je odstraněn.
 
 Vizuální jazyk platí pro celou aplikaci, ne jen pro Dnes. Knihovna, Uložené i čekající položky v Inboxu používají stejnou kartu; liší se hustotou a doprovodným textem, nikoli tvarem.
 
 ## Karty
 
-Všechny renderery dostávají `FeedItem`. Společné prvky: zdroj, datum, headline, uložit, stav přečteno, skrýt. Zdroj i datum čitelné, nikoli přes celé obrázky s nízkým kontrastem.
+Všechny renderery dostávají `FeedItem`. Společné prvky: avatar a název zdroje, relativní čas, headline, uložit a „···“ v hlavičce, rozbalitelné shrnutí a tap na originál.
 
-Feed není jedna karta opakovaná dokola. Důraz určuje `emphasis` od AI editora; chybí-li, odvodí se z prezentace a hodnocení. Zdroj ho může omezit přes `imageMode`, a obraz menší než 480px se nikdy neroztahuje přes celou šířku — degraduje na náhled.
+Feed není jedna karta opakovaná dokola. Důraz určuje `emphasis` od AI editora; chybí-li, odvodí se z prezentace a hodnocení. Zdroj ho může omezit přes `imageMode`. Rozhoduje i skutečný obraz: položka bez obrázku je textová karta a obraz užší než 480px překlopí celou kartu do kompaktního řádku s náhledem vedle textu — feedy `width` skoro nikdy neuvádějí, takže se měří po načtení.
 
 | Důraz | Podoba |
 |---|---|
 | lead | obraz3:2 přes celou šířku, největší nadpis; nosná položka vydání |
-| standard | obraz16:9 přes celou šířku, nadpis a perex |
-| compact | náhled96×96 vedle textu, menší nadpis, perex na tři řádky |
-| text | bez obrazu, velký nadpis nese pozornost sám |
+| standard | obraz16:9 přes celou šířku, nadpis nad obrazem |
+| compact | náhled96×96 vedle textu, menší nadpis |
+| text | bez obrazu, nadpis a delší text nesou pozornost sám |
+
+Shrnutí je ve výchozím stavu zkrácené na tři řádky a končí odkazem „Zobrazit víc“ ve větě, ne tlačítkem v pruhu.
 
 | Presentation | Obsah a hlavní akce |
 |---|---|
-| article | důraz podle `emphasis`; bez obrázku typografická karta |
+| article | důraz podle `emphasis` a podle toho, jaký obraz reálně je |
 | long_read | větší nadpis, delší perex, odhad času, viditelné „Stojí za přečtení“ |
-| distilled_fact | velký krátký text, decentní téma, dole malý dohledatelný zdroj; žádné „klikni pro pointu“ |
+| distilled_fact | velký krátký text patkovým písmem, dole malý dohledatelný zdroj; žádné „klikni pro pointu“ |
 | school_notice | datum oznámení, text, případné rozlišené úkol/test/učivo, jasně odlišit tip AI |
 | video | poster s poměrem stran, play na klik, titulek a provider; načíst YouTube iframe až po akci |
 | audio | čtvercový cover, pořad/epizoda, délka pokud známá, otevřít Spotify/originál |
@@ -39,17 +55,21 @@ Media a platforma jsou samostatné od prezentace a témat. YouTube external ID v
 
 ## Otevření položky, čtení a feedback
 
-Tap kdekoli na kartě otevře originál na webu zdroje, ve stejné kartě. Vlastní detail se neukazuje: dokud ingest neuloží plný text, neobsahoval by nic, co už není na kartě, a byl by to jen krok navíc (ADR-014). Návrat je tlačítko zpět, ne zavírání karet, a musí vrátit čtenáře přesně tam, kde skončil — pozice ve feedu i otevřená záložka se proto ukládají před odchodem a obnovují až na vykreslený feed, ne dřív.
+Ovládání je v hlavičce karty vedle zdroje: **uložit** jako viditelná ikona, všechno ostatní pod „···“ (skrýt, vrátit na nepřečtené, podrobnosti). Spodní pruh akcí neexistuje — karta tím zkrátí o celý řádek a hlavička drží tvar u všech variant včetně těch bez obrazu.
+
+**Přečteno se řídí samo.** Nastaví ho otevření originálu i rozbalení položky ve feedu; obojí je čtení. Ruční přepínač zůstává jen v „···“ jako oprava, ne jako každodenní akce, a pouhé projetí karty scrollováním read nenastavuje. Přečtená karta se během aktivního scrollu jen ztlumí, nezmizí a nepřeskládá okolí.
+
+**Tap na kartu otevře originál**, ve stejné kartě. Klikatelná je celá plocha kromě textu shrnutí, rozbalených podrobností a ovládacích prvků. Aby se do odchodu netrefil scroll, tap se počítá jen jako čisté tapnutí: posun prstu nad10px nebo držení nad500ms se bere jako rolování, ne jako volba. Nadpis je zároveň skutečný odkaz, takže cíl je dostupný i klávesnicí a čtečkou obrazovky — žádná akce není dostupná jen gestem.
+
+**Text rozbaluje na místě.** Shrnutí je zkrácené na tři řádky a končí odkazem „Zobrazit víc“ přímo ve větě; klik na text i na ten odkaz rozbalí celé shrnutí, témata, „proč to vidíte“ a podklad, na kterém shrnutí stojí. Rozbalení nikam nenaviguje a neztrácí pozici — je to náhrada za zrušený detail. Stavová akce nesmí shodit feed do skeletonu: data se po ní načtou tiše, jinak by se rozbalení ztratilo a proud probliknul.
 
 Vestavěný prohlížeč cizí stránky uvnitř rozhraní není dosažitelný a nebude se předstírat; zpravodajské weby vkládání do rámu zakazují. Až bude k dispozici `access: full`, položka se otevře do vlastního čtení s uloženým plain textem bezpečně formátovaným bez zdrojového HTML.
 
-Stav read je samostatný: otevření originálu označí read, pouhé projetí karty scrollováním ne. U distilled_fact a school_notice je viditelná malá akce „Přečteno“, protože není nutné nikam odcházet. Lze vrátit na unread. Přečtená karta se během aktivního scrollu jen ztlumí, nezmizí a nepřeskládá okolí; filtr se znovu uplatní při explicitním refresh/navigaci.
+Skryté položky musí jít znovu zobrazit a vrátit mezi čekající — jednosměrné skrytí bez cesty zpět není přijatelné. Akce jsou stavové přepínače vlastního prostoru, ne signály pro ostatní.
 
-Akce na kartě jsou tři a jsou to stavové přepínače vlastního prostoru, ne signály pro ostatní: přečteno, uložit, skrýt. Skryté položky musí jít znovu zobrazit a vrátit mezi čekající — jednosměrné skrytí bez cesty zpět není přijatelné.
+Menu později doplní „Více podobného“, „Jsem rád, že jsem to viděl“, „Méně podobného“ a „Dobrý objev“. More/less dovoluje volitelně upřesnit položku/téma/zdroj v druhém kroku, ale výchozí akce bez povinného dialogu target=item. Volný komentář≤500 znaků zůstává soukromou poznámkou pro vlastní AI editor; nikde se nezveřejňuje.
 
-Menu: „Více podobného“, „Jsem rád, že jsem to viděl“, „Méně podobného“, „Dobrý objev“, „Skrýt“, „Proč to vidím / Zdroj“. More/less dovoluje volitelně upřesnit položku/téma/zdroj v druhém kroku, ale výchozí akce bez povinného dialogu target=item. Volný komentář≤500 znaků zůstává soukromou poznámkou pro vlastní AI editor; nikde se nezveřejňuje. Save/read/hide jsou stavové přepínače a nekladou otázku na preference.
-
-Provenance: zdroj, datum, „AI shrnutí“ a basis „celý dostupný text / výňatek / pouze metadata“ patří ke kartě. Hodnoticí čísla zůstávají skrytá; nevytvářet vizuální dojem ověřené pravdy.
+Provenance: zdroj, datum, „AI shrnutí“ a basis „celý dostupný text / výňatek / pouze metadata“ patří do rozbalené karty. Hodnoticí čísla zůstávají skrytá; nevytvářet vizuální dojem ověřené pravdy.
 
 ## Vydání a historie
 

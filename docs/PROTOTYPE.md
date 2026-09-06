@@ -22,3 +22,7 @@ Prefix `/api/v1`, JSON, errors `{error:{code,message}}`. Identitu určuje server
 PrototypeSource: `{id,name,url,pluginId,groups,deliveryMode,enabled,createdAt,lastFetchedAt,lastError}`. Datum a error nullable. Source config oddělené od core SourceMetadata.
 
 Úložiště je trvalé a oddělené podle identity. PWA ukládá shell; globální service-worker cache nesmí obsahovat autentizované API odpovědi. Offline úpravy/synchronizace, plný MCP, automatický cron a pilotní hodnocení nejsou předstírány jako hotové. Export/import redakčního jobu je použitelná mezivrstva pro externí AI; dokud skutečný runner neprojde smoke, není označen za automatický.
+
+## Redakce v2 (ADR-017)
+
+`POST /editor/export` navíc vrací promptVersion, history, knownTopics, recommendedShortlistCandidateIds a budgets. Kandidát nese ageDays, state, source, fullTextReceipt a articleRead. `POST /editor/enrich {runId,candidateIds}` načte nejvýše4 originály/dávku, maximálně20/run, pouze URL ze snapshotu. Export se poté obnoví. `POST /editor/import` přijímá buď původní submission, nebo submissions (pole dávek), a společné orderedCandidateIds a operationId. Pole emphasis a imageTreatment jsou volitelná, staré odpovědi zůstávají platné. Podrobná pravidla dostupnosti textu a validačních hranic viz AI_EDITOR.

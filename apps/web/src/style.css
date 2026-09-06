@@ -49,23 +49,18 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   outline-offset: 2px;
 }
 h1, h2, p { margin-top: 0 }
-h1 { font: 700 clamp(30px, 7.5vw, 40px)/1.03 Georgia, "Times New Roman", serif; letter-spacing: -1.3px; margin-bottom: 8px }
-h2 { font-family: Georgia, "Times New Roman", serif; line-height: 1.14; letter-spacing: -.4px }
+h1 { font-size: clamp(24px, 6vw, 30px); font-weight: 700; line-height: 1.12; letter-spacing: -.5px; margin-bottom: 8px }
+h2 { line-height: 1.25; letter-spacing: -.2px; font-weight: 700 }
 em { color: var(--faint); font-style: normal; font-weight: 500 }
 
-.app { min-height: 100vh; padding-bottom: 82px }
-header {
-  height: 60px;
-  max-width: 680px;
-  margin: auto;
-  padding: 8px 16px;
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  justify-content: space-between;
-}
-.brand { background: none; border: 0; padding: 3px 0; font: 700 27px/1 Georgia, serif; letter-spacing: -1.4px }
-.brand span { color: var(--accent) }
+.app { min-height: 100vh; padding-bottom: 28px }
+header { max-width: 680px; margin: auto }
+.bar .spacer { flex: 1 }
+.bar { display: flex; align-items: center; gap: 2px; height: 58px; padding: 6px 8px 6px 16px }
+.brand { background: none; border: 0; padding: 2px 0; display: flex; align-items: center; gap: 9px; font-size: 22px; font-weight: 800; line-height: 1; letter-spacing: -.8px; color: var(--text) }
+.brand .icon-svg { font-size: 26px; color: var(--text) }
+.brand .mark-drop { fill: var(--accent) }
+.brand .word { display: inline-block }
 .search {
   background: var(--surface-2);
   border: 1px solid var(--line);
@@ -74,24 +69,49 @@ header {
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 0 12px;
+  padding: 0 14px;
   flex: 1;
-  max-width: 310px;
   color: var(--faint);
 }
-.search input { min-width: 0; width: 100%; border: 0; background: transparent; outline: 0; color: var(--text); font-size: 14px }
-main { max-width: 680px; margin: auto; padding: 8px 0 32px }
-.heading { margin: 14px 16px 18px }
+.search .icon-svg { font-size: 17px; flex: 0 0 auto }
+.search input { min-width: 0; width: 100%; border: 0; background: transparent; outline: 0; color: var(--text); font-size: 15px }
+main { max-width: 680px; margin: auto; padding: 4px 0 32px }
+/* Lišta je přilepená, ale při rolování dolů uhne; první pohyb nahoru ji vrátí. */
+header { position: sticky; top: 0; z-index: 4; background: var(--scrim); backdrop-filter: blur(12px); transition: transform .18s ease; border-bottom: 1px solid var(--line) }
+header.away { transform: translateY(-100%) }
+.add-item { width: 44px; height: 44px; border: 0; background: transparent; border-radius: 50%; font-size: 23px; color: var(--muted); flex: 0 0 auto; display: grid; place-items: center }
+.add-item:hover { background: var(--accent-soft); color: var(--accent-text) }
+.add-item.on { color: var(--accent-text) }
+/* Režim feedu zůstává vidět, řazení a kategorie jsou o tap dál. */
+.tabs { display: flex; align-items: center; gap: 20px; padding: 0 16px }
+.tabs button { border: 0; background: transparent; font-size: 15px; font-weight: 650; color: var(--faint); padding: 4px 0 11px; border-bottom: 2px solid transparent; margin-bottom: -1px }
+.tabs button.on { color: var(--text); border-bottom-color: var(--accent) }
+.tabs .spacer { flex: 1 }
+.tabs .filter { border: 0; background: transparent; font-size: 20px; color: var(--muted); border-bottom: 0; padding: 0 4px 8px; display: grid; place-items: center }
+.tabs .filter.on { color: var(--accent-text) }
+.panel { margin: 0 16px 12px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px }
+.panel-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; font-weight: 650; padding: 4px 0 8px }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden }
+.seg button { border: 0; background: transparent; font-size: 13px; padding: 8px 11px; color: var(--muted); min-height: 38px }
+.seg button.on { background: var(--accent-soft); color: var(--accent-text); font-weight: 700 }
+.chips { display: flex; flex-wrap: wrap; gap: 6px }
+.chip { border: 1px solid var(--line); background: var(--surface-2); border-radius: 99px; padding: 7px 13px; font-size: 13px; color: var(--muted); min-height: 36px }
+.chip.on { background: var(--accent-soft); color: var(--accent-text); border-color: transparent; font-weight: 700 }
+.chip.add { border-style: dashed }
+.linky { border: 0; background: transparent; padding: 0; font: inherit; color: var(--accent-text); text-decoration: underline }
+.heading { margin: 6px 16px 12px }
+/* Dnes nemá hlavičku vydání: proud začíná obsahem, datum je jen tichá poznámka. */
+.stream-note { font-size: 12.5px; color: var(--faint); margin: 4px 16px 10px; font-weight: 650 }
 .heading > p, .share > p { font-size: 11px; letter-spacing: .12em; font-weight: 800; color: var(--accent-text); margin: 0 0 6px }
 .intro, .hint { color: var(--muted); line-height: 1.5; margin: -8px 16px 16px }
 
 /* Feed: souvislý proud, karty oddělené mezerou a vlasovou linkou, obraz do krajů sloupce. */
-.cards { display: flex; flex-direction: column; gap: 10px }
+.cards { display: flex; flex-direction: column; gap: 8px }
 .card {
   background: var(--surface);
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
-  padding: 0 0 16px;
+  padding: 0 0 14px;
   text-align: left;
   width: 100%;
   display: block;
@@ -100,19 +120,25 @@ main { max-width: 680px; margin: auto; padding: 8px 0 32px }
   border-right: 0;
 }
 .card.read { opacity: .58 }
+/* Viděné, ale nepřečtené: jen tišší jméno zdroje, žádná další značka — karta zůstává plně čitelná. */
+.card.seen:not(.read) .meta .who { color: var(--muted); font-weight: 650 }
 .card.tap { cursor: pointer }
 .meta {
   display: flex;
-  gap: 5px 9px;
-  flex-wrap: wrap;
+  gap: 4px 7px;
+  flex-wrap: nowrap;
   align-items: center;
-  color: var(--muted);
-  font-size: 12.5px;
-  font-weight: 650;
-  padding: 12px 16px 10px;
+  color: var(--faint);
+  font-size: 13px;
+  padding: 10px 16px 6px;
 }
-.meta b { background: var(--accent-soft); color: var(--accent-text); border-radius: 10px; padding: 2px 8px; font-size: 11.5px }
-.meta .dot { color: var(--faint); font-weight: 400 }
+.meta .who { color: var(--text); font-weight: 700; max-width: 58%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.loading-more { text-align: center; color: var(--faint); font-size: 13.5px; padding: 22px 16px }
+.meta .dot { color: var(--faint) }
+.meta .badge { background: var(--accent-soft); color: var(--accent-text); border-radius: 9px; padding: 2px 8px; font-size: 11.5px; font-weight: 650; font-style: normal }
+.meta .badge.kind { background: transparent; border: 1px solid var(--line); color: var(--faint) }
+.avatar { width: 26px; height: 26px; border-radius: 50%; flex: 0 0 auto; object-fit: cover; background: var(--surface-2) }
+.avatar.mono { display: grid; place-items: center; color: #fff; font-size: 13px; font-weight: 700; text-transform: uppercase }
 
 .shot { position: relative; width: 100%; aspect-ratio: 16/9; overflow: hidden; background: var(--surface-2) }
 .shot img { width: 100%; height: 100%; object-fit: cover; display: block }
@@ -131,38 +157,51 @@ main { max-width: 680px; margin: auto; padding: 8px 0 32px }
 /* Kompaktní karta: náhled vpravo, text nese hlavní váhu. */
 .card.compact .row { display: flex; gap: 12px; align-items: flex-start; padding: 0 16px }
 .card.compact .body { min-width: 0; flex: 1 }
-.card.compact h2 { font-size: 18px; margin: 0 0 5px }
-.card.compact .lede { margin: 0; font-size: 14px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden }
+.card.compact h2 { font-size: 17px; margin: 0 0 5px }
+.card.compact .lede { margin: 0; font-size: 14px }
 .shot.thumb { width: 96px; height: 96px; aspect-ratio: auto; flex: 0 0 auto; border-radius: 10px }
-/* Malý náhled mimo kompaktní řádek dostane vlastní odsazení, aby nelepil na kraj. */
-.card > .shot.thumb { margin: 0 16px 4px }
 .shot.failed { display: none }
 .shot.thumb.blank span { font-size: 11px; padding: 4px }
 /* Textová karta: bez obrazu, text sám nese pozornost. */
-.card.text h2 { font-size: 24px }
+.card.text h2 { font-size: 21px }
 .card.text .lede { font-size: 16px }
 /* Lead: nejvýraznější položka vydání. */
-.card.lead h2 { font-size: 26px }
+.card.lead h2 { font-size: 23px }
 .card.lead .shot { aspect-ratio: 3/2 }
 .meta .kind { background: transparent; border: 1px solid var(--line); color: var(--faint); font-weight: 650 }
 
-.actions { display: flex; gap: 2px; padding: 8px 10px 2px }
-.actions button {
-  width: 42px;
-  height: 42px;
+.meta .spacer { flex: 1 }
+.meta .icon {
+  width: 40px;
+  height: 40px;
+  margin: -6px 0;
   border: 0;
   background: transparent;
   border-radius: 50%;
-  font-size: 19px;
+  font-size: 21px;
   color: var(--muted);
   display: grid;
   place-items: center;
 }
-.actions button:hover { background: var(--accent-soft); color: var(--accent-text) }
-.actions button.selected { color: var(--accent-text) }
-.actions .spacer { flex: 1 }
-.card h2 { font-size: 22px; margin: 4px 16px 7px }
-.card .lede { color: var(--muted); line-height: 1.5; margin: 0 16px; font-size: 15px }
+.meta .icon:hover { background: var(--accent-soft); color: var(--accent-text) }
+.meta .icon.selected { color: #e2445c }
+.icon-svg { display: block; overflow: visible }
+/* Nabídka pod hlavičkou: skrýt, vrátit na nepřečtené, podrobnosti. */
+.menu { display: grid; margin: 2px 16px 6px; border: 1px solid var(--line); border-radius: 11px; overflow: hidden; background: var(--surface-2) }
+.menu button { text-align: left; border: 0; background: transparent; padding: 12px 14px; font-size: 14.5px; min-height: 46px; color: var(--text) }
+.menu button + button { border-top: 1px solid var(--line) }
+.menu button:hover { background: var(--accent-soft); color: var(--accent-text) }
+/* „Zobrazit víc“ patří na konec textu, ne do zvláštního pruhu. */
+.showmore { border: 0; background: transparent; padding: 0 0 0 4px; font-size: inherit; font-weight: 650; color: var(--faint) }
+.showmore:hover { color: var(--accent-text) }
+.card h2 a { color: inherit; text-decoration: none }
+.card h2 { font-size: 19px; margin: 0 16px 8px }
+.card .lede { color: var(--muted); line-height: 1.5; margin: 8px 16px 0; font-size: 15px; cursor: pointer }
+.card .lede.clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden }
+.why { margin: 10px 16px 0; padding: 12px; background: var(--surface-2); border-radius: 10px; font-size: 13.5px; color: var(--muted); line-height: 1.5 }
+.why p { margin: 0 0 4px }
+.why p:last-child { margin: 0 }
+.why .topics { margin: 0 0 8px }
 .card .fact { font: 20px/1.35 Georgia, serif; color: var(--text); margin: 0 16px }
 .kicker { font-size: 12px; color: var(--faint); margin: 10px 16px 0; font-weight: 650 }
 
@@ -216,23 +255,6 @@ main { max-width: 680px; margin: auto; padding: 8px 0 32px }
 .primary:hover { filter: brightness(1.08) }
 .primary:disabled { opacity: .5; cursor: not-allowed }
 
-nav {
-  position: fixed;
-  z-index: 3;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 72px;
-  padding: 5px max(8px, env(safe-area-inset-left)) env(safe-area-inset-bottom);
-  display: flex;
-  justify-content: center;
-  background: var(--scrim);
-  border-top: 1px solid var(--line);
-  backdrop-filter: blur(12px);
-}
-nav button { border: 0; background: none; color: var(--muted); min-width: 62px; max-width: 105px; flex: 1; display: grid; gap: 2px; justify-items: center; align-content: center; font-size: 11px }
-nav button span { font-size: 21px; line-height: 21px }
-nav button.active { color: var(--accent-text); font-weight: 800 }
 
 .notice, .error { margin: 5px 16px 12px; padding: 12px 14px; border-radius: 11px; display: flex; align-items: center; justify-content: space-between; gap: 12px; line-height: 1.35 }
 .notice { background: #e5f6e7; color: #153e21 }
@@ -304,24 +326,6 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 25px 16px }
 @keyframes loading { to { background-position-x: -260% } }
 
 @media (min-width: 760px) {
-  .app { padding-bottom: 34px }
-  nav {
-    top: 78px;
-    bottom: auto;
-    left: max(18px, calc(50% - 480px));
-    right: auto;
-    width: 155px;
-    height: auto;
-    padding: 8px;
-    display: grid;
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    background: var(--surface);
-    backdrop-filter: none;
-  }
-  nav button { max-width: none; width: 100%; grid-template-columns: 27px 1fr; justify-items: start; text-align: left; padding: 9px; font-size: 13px }
-  nav button span { font-size: 19px }
-  main { margin-left: calc(50% - 340px) }
   .card { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow) }
   .cards { gap: 14px; padding: 0 16px }
   .card h2, .card .lede, .card .fact, .kicker { margin-left: 16px; margin-right: 16px }

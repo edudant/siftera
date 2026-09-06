@@ -2,7 +2,7 @@
 
 ## Účel
 
-Uživatel přidá vlastní zdroje a popíše, co chce dlouhodobě konzumovat. Siftera nabídne pohodlný multimediální feed s konečným denním výběrem, historií a dohledatelnými originály. Úspěch znamená „jsem rád, že jsem to viděl“, užitečné objevy a méně opakování; čas v aplikaci a prokliky nejsou hlavní metriky.
+Uživatel přidá vlastní zdroje a popíše, co chce dlouhodobě konzumovat. Siftera nabídne pohodlný multimediální proud zajímavých položek z poslední doby, které ještě nečetl, s historií a dohledatelnými originály (ADR-015). Úspěch znamená „jsem rád, že jsem to viděl“, užitečné objevy a méně opakování; čas v aplikaci a prokliky nejsou hlavní metriky.
 
 ## Schválená upřesnění
 
@@ -19,7 +19,7 @@ Uživatel přidá vlastní zdroje a popíše, co chce dlouhodobě konzumovat. Si
 1. Dospělý přidá Hospodářské noviny, BBC, CNN, několik autorů Medium a technické blogy; nastaví zájmy a omezení. Agent vybere ráno např. 25 položek, z toho dva dlouhé texty a několik objevů.
 2. Slabý clickbait obsahuje jedinou užitečnou informaci: vznikne krátká `distilled_fact` karta s originálem. Kvalitní analýza dostane `long_read` kartu a perex, který nevyzradí celý text.
 3. Samostatný školní uživatel sleduje stránku třídy. Po ingestu vidí všechny nové příspěvky ve filtru Škola. AI může později doplnit úkoly či testy; nerozpoznaný termín zůstane neurčený.
-4. Uživatel uloží článek offline; po připojení se akce synchronizuje. Hromadné přečtení ani otevření originálu nemění explicitní zájmy.
+4. Uživatel uloží článek offline; po připojení se akce synchronizuje. Hromadné přečtení ani otevření originálu nemění explicitní zájmy; při zapnutém `behaviorEnabled` smí být to, co uživatel viděl a nechal být, slabým signálem nezájmu pro editora (ADR-015), nikdy ne náhradou explicitních preferencí.
 5. Externí editor jeden den neběží. Poslední vydání zůstane dostupné, UI ukáže stáří; nové zdroje a Škola se dál načítají.
 
 ## Rozsah MVP

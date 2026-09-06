@@ -5,6 +5,7 @@ import { SafeHttpClient, SafeHttpError, assertSafePublicUrl } from "./safe-http.
 
 export * from "./html.js";
 export * from "./safe-http.js";
+export * from "./article.js";
 
 export interface ConnectorSource {
   sourceId: string;

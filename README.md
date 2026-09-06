@@ -10,7 +10,18 @@ První internetová verze používá Sites, jeho přihlášení přes ChatGPT a 
 
 V aplikaci přidej RSS/Atom zdroj nebo odkaz/text do Inboxu. Celý vložený text výslovně označ. AI editor umožňuje stáhnout redakční job, zpracovat ho vlastním AI klientem a importovat výsledek; prototyp publikuje nejvýše 10 položek najednou. Bez AI je Inbox normálně použitelný. Na mobilu lze web přidat na plochu; sdílení do PWA závisí na podpoře prohlížeče. Přenosnější alternativou je ručně vložit URL.
 
-GitHub Pages může později hostovat UI s externím API; současný hosted build je samostatný Worker se statickým React klientem. Není to automatický cron, plný MCP ani dokončený původní MVP plán.
+## Veřejná ukázka na GitHub Pages
+
+Statické UI s ukázkovým feedem se staví bez backendu (ADR-018):
+
+```sh
+pnpm demo:feed        # volitelně: obnoví ukázková data z běžícího lokálního backendu
+pnpm build:pages      # výstup v dist/pages
+```
+
+Ukázka čte sanitizovaný snapshot `apps/web/public/demo-feed.json` — jen veřejná článková metadata a krátké redakční výstupy, žádné identity ani plná těla článků. Čtení, ukládání a ruční vstupy se drží pouze v prohlížeči konkrétního návštěvníka. Sběr z RSS a redakční export/import backend potřebují a ukázka to říká otevřeně místo tichého selhání; Pages neumí obejít CORS ani hostovat Worker. Nasazení obstará workflow `.github/workflows/pages.yml` po pushi do hlavní větve.
+
+Hosted build je samostatný Worker se statickým React klientem. Firebase je v repozitáři jen pro emulátory a Firestore/Storage adaptéry — hosting na něm nastavený není. Není to automatický cron, plný MCP ani dokončený původní MVP plán.
 
 ## Stav původního plánu
 

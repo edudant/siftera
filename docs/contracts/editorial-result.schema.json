@@ -301,6 +301,14 @@
             ]
           },
           "maxItems": 20
+        },
+        "imageTreatment": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "show",
+            "hide"
+          ]
         }
       },
       "required": [

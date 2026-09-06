@@ -4,7 +4,14 @@ Aktualizováno 6. 9. 2026. Uživatel změnil prioritu na první online/mobilní 
 
 ## Funkční prototyp
 
-- Vizuální feed podle ADR-014: karty ve čtyřech důrazech (lead/standard/compact/text) podle `emphasis` od AI editora, s `imageMode` na zdroj a automatickou degradací obrázků pod 480px na náhled. RSS konektor čte obrázky z `enclosure` a `media:*`, ingest je propouští do kandidáta i vydání. Barevný režim podle systému. Klik otevírá originál ve stejné kartě a návrat obnoví pozici ve feedu; vlastní detail se neukazuje, protože bez plného textu nic nepřidával.
+- Veřejná ukázka pro GitHub Pages podle ADR-018: statický adaptér `apps/web/src/demo.ts` čte sanitizovaný snapshot a všechny změny drží v `localStorage`; akce vyžadující backend (sběr z RSS, redakční export/import, správa zdrojů) hlásí, že bez něj nefungují. `pnpm build:pages` staví do `dist/pages` s `BASE_PATH` pro podcestu repozitáře, `pnpm demo:feed` ukázková data obnoví a odmítne je zapsat, pokud by obsahovala identitu, e-mail nebo odkaz na uložený obsah. Ověřeno servírováním buildu pod `/siftera/`: 30 položek, šest zdrojů, funkční ukládání i poctivá hláška u obnovení zdroje. Vlastní nasazení na Pages zatím neproběhlo — repozitář `edudant/siftera` v době psaní neexistoval.
+
+- AI editor v2 (ADR-017): dvoustupňový přehled → volitelný AI shortlist → serverové doplnění nejvýše20 originálů → redakce a import až50 položek v dávkách po10. Job obsahuje ageDays, čtenářské stavy, historii a známá témata. PublicArticleReader odstraňuje skrytý obsah; detekovaný paywall poskytuje jen veřejný popis. Plný text je svázaný s candidate revision a read receipt; neúspěšný originál neblokuje RSS podklad. Editor určuje presentation/emphasis/imageTreatment; UI respektuje zdroj a rozlišení obrazu. Model zůstává externí, cron a placené API se nezavádějí.
+
+
+- Vizuální feed podle ADR-014: bezpatková typografie, kruhový avatar zdroje z favicony s monogramem jako fallback, relativní čas, Dnes bez hlavičky vydání a rozbalení položky přímo ve feedu. Karty ve čtyřech důrazech (lead/standard/compact/text) podle `emphasis` od AI editora, s `imageMode` na zdroj; obraz pod 480px překlopí kartu do kompaktního řádku. RSS konektor čte obrázky z `enclosure` a `media:*`, ingest je propouští do kandidáta i vydání. Barevný režim podle systému. Klik otevírá originál ve stejné kartě a návrat obnoví pozici ve feedu; vlastní detail se neukazuje, protože bez plného textu nic nepřidával.
+- Jeden feed podle ADR-016: taby Výběr / Vše / Uložené a ikona filtrů v hlavičce, která uhýbá při rolování; spodní lišta zrušena, hledání je lupa. Postupné dočítání po 15 položkách, poslední bootstrap v `sessionStorage` pro okamžitý návrat z originálu včetně pohledu a hloubky scrollu. Jméno zdroje se řeší z aktuální konfigurace a zkracuje na jeden řádek. Řazení a kategorie v panelu, vkládání pod „+“. Kategorie jsou uživatelské filtry nad tématy a zdroji uložené v preferencích; Inbox jako samostatná obrazovka zanikl. Horní lišta uhýbá při rolování dolů.
+- Proud nepřečteného podle ADR-015: Dnes čte publikované položky napříč vydáními (nepřečtené, neskryté, do14 dní), řazené relevancí s útlumem stáří; Knihovna je archiv. Klient hlásí dávkově, co měl uživatel aspoň z poloviny na obrazovce déle než vteřinu (`POST /items/seen`, stav `seenAt`); viděné klesá v pořadí, nemizí. Se zapnutým `behaviorEnabled` job navíc nese `recentlyIgnored`.
 - Samostatná React PWA: Dnes, Knihovna, Inbox, Uložené, Zdroje, preference a AI editor. Mobilní rozložení, vyhledávání nad načtenými daty, read/save/hide a potvrzené vložení sdíleného odkazu. Inbox vedle ručního příjmu vypisuje i čekající kandidáty ze zdrojů; prázdné stavy Dnes a Knihovny podle stavu dat navigují na přidání zdroje, obnovení nebo AI editor.
 - Plugin registry odděluje vstupy od databáze a AI. Ruční URL/text a RSS/Atom, bounded safe HTTP a parser. Celý ručně vložený text je nutné výslovně označit.
 - Fetch HTTP API používá existující core: preference, zdroje, ingest, stav a redakční export/import/abort. Identity poskytuje Sites dispatcher; UID není klientský vstup.
@@ -28,7 +35,7 @@ WebMCP read-only status tool je feature-detected; nebyl ověřen v podporovaném
 
 ## Omezení první verze
 
-- AI import je jeden batch, nejvýše10 vybraných položek. Job expiruje podle core draft TTL. UI a běžný Inbox fungují i bez AI.
+- AI import podporuje až50 vybraných položek v dávkách po10. Job expiruje za60 minut. Extrakce originálu je heuristická, u některých webů zůstane jen popis nebo RSS výňatek.
 - RSS refresh je ruční a zpracuje nejvýše25 prvních položek; starší položky nemají implementovaný continuation cursor. Není hotový plánovač/lease ani source discovery/OPML/školní HTML parser.
 - RSS text je partial; shrnutí z něj nesmí předstírat přečtený celý článek. Paywally se neobcházejí.
 - PWA ukládá app shell, nikoli poslední soukromé vydání ani offline frontu mutací. Share target závisí na prohlížeči. Přidání na plochu je třeba ověřit na uživatelově telefonu.

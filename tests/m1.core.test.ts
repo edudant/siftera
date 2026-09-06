@@ -243,6 +243,7 @@ describe("M1 editorial core", () => {
       instructions: "",
       language: "cs",
       timezone: "Europe/Prague",
+      categories: [],
       preferredTopics: [],
       avoidTopics: [],
       desiredTopicMix: [],

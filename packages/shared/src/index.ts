@@ -142,6 +142,18 @@ export const sourceSchema = z
     lastModified: z.string().max(500).nullable(),
   })
   .strict();
+/** Uživatelská kategorie je pojmenovaný filtr nad tématy a zdroji, ne škatulka pro AI editora (ADR-016). */
+export const feedCategorySchema = z
+  .object({
+    id: idSchema,
+    label: z.string().min(1).max(40),
+    topics: z.array(z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/)).max(20),
+    sourceIds: z.array(idSchema).max(20),
+  })
+  .strict()
+  .refine((value) => value.topics.length + value.sourceIds.length > 0, {
+    message: "category must match at least one topic or source",
+  });
 export const preferenceSchema = z
   .object({
     version: z.number().int().min(1),
@@ -173,6 +185,7 @@ export const preferenceSchema = z
     maxCandidateAgeDays: z.number().int().min(1).max(30),
     includeRead: z.boolean(),
     behaviorEnabled: z.boolean(),
+    categories: z.array(feedCategorySchema).max(12).default([]),
     updatedAt: isoSchema,
   })
   .strict()
@@ -228,6 +241,7 @@ const editorialProposalObject = z
     assessment: assessmentSchema,
     whyIncluded: z.string().min(1).max(240),
     emphasis: emphasisSchema.optional(),
+    imageTreatment: z.enum(["auto", "show", "hide"]).optional(),
     openOriginal: z.boolean(),
     distilledText: z.string().min(1).max(500).nullable(),
     evidenceQuote: z.string().min(1).max(500).nullable(),
@@ -309,6 +323,8 @@ export const itemStateSchema = z
     read: z.boolean(),
     saved: z.boolean(),
     hidden: z.boolean(),
+    /** Kdy měl uživatel položku poprvé před očima (ADR-015). Slabší signál než `read`; nikdy ji neskrývá. */
+    seenAt: isoSchema.nullable().default(null),
     version: z.number().int().nonnegative(),
     updatedAt: isoSchema,
   })
@@ -440,6 +456,7 @@ export type SourceAdapterConfig = z.infer<typeof sourceAdapterConfigSchema>;
 export type Candidate = z.infer<typeof candidateSchema>;
 export type CandidateContent = z.infer<typeof candidateContentSchema>;
 export type PreferenceProfile = z.infer<typeof preferenceSchema>;
+export type FeedCategory = z.infer<typeof feedCategorySchema>;
 export type EditorialProposal = z.infer<typeof editorialProposalSchema>;
 export type EditorialSubmission = z.infer<typeof editorialSubmissionSchema>;
 export type UserItemState = z.infer<typeof itemStateSchema>;

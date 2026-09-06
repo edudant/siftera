@@ -52,7 +52,7 @@ describe("Independent M2a repository review", () => {
       expect(await tx.getPreferences()).toEqual(profile);
       await tx.putCandidate({ candidate: { ...original, id: "staged_candidate" }, sourcePayload: "fixture" });
       expect((await tx.listCandidates(10)).map((record) => record.candidate.id).sort()).toEqual([original.id, "staged_candidate"].sort());
-      await tx.putState({ candidateId: "rollback_item", read: true, saved: false, hidden: false, version: 1, updatedAt: clock.now().toISOString() });
+      await tx.putState({ candidateId: "rollback_item", read: true, saved: false, hidden: false, seenAt: null, version: 1, updatedAt: clock.now().toISOString() });
       expect((await tx.getState("rollback_item"))?.read).toBe(true);
       throw new Error("Synthetic rollback after pending writes");
     })).rejects.toThrow("Synthetic rollback");

@@ -24,6 +24,8 @@ const editorialItem = {
       properties: { relevance: { type: "integer", minimum: 0, maximum: 100 }, quality: { enum: ["useful", "thin", "unknown"] }, novelty: { enum: ["new", "update", "repeat"] }, basis: { enum: ["full_text", "excerpt", "metadata"] } },
       required: ["relevance", "quality", "novelty", "basis"],
     },
+    emphasis: { type: "string", enum: ["lead", "standard", "compact", "text"] },
+    imageTreatment: { type: "string", enum: ["auto", "show", "hide"] },
     whyIncluded: { type: "string", minLength: 1, maxLength: 240 },
     openOriginal: { type: "boolean" },
     distilledText: { anyOf: [{ type: "string", minLength: 1, maxLength: 500 }, { type: "null" }] },

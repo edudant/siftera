@@ -22,6 +22,8 @@ import {
   type UserItemState,
 } from "@siftera/shared";
 import type {
+  ArticleRead,
+  ArticleReader,
   Clock,
   ContentStore,
   DraftData,
@@ -112,6 +114,7 @@ export function defaultPreferences(now: Date): PreferenceProfile {
     maxCandidateAgeDays: 7,
     includeRead: false,
     behaviorEnabled: false,
+    categories: [],
     updatedAt: iso(now),
   });
 }
@@ -444,6 +447,16 @@ export class EditorialService {
       return run;
     });
   }
+  async editorSnapshot(principal: Principal, runId: string): Promise<DraftData> {
+    this.assertScope(principal, "candidates:read");
+    return this.repository.read(principal.uid, async tx => {
+      const draft = this.draft(await tx.getRun(runId));
+      this.assertLiveDraft(draft);
+      if ((await tx.getFeedPointer()).activeRunId !== runId) throw new SifteraError("RUN_NOT_ACTIVE");
+      if ((await tx.getPreferences())?.version !== draft.preference.version) throw new SifteraError("STALE_PREFERENCES");
+      return draft;
+    });
+  }
 
   async submit(
     principal: Principal,
@@ -751,6 +764,34 @@ export class EditorialService {
       };
     });
   }
+  /**
+   * Proud podle ADR-015: publikované položky napříč vydáními, které uživatel nepřečetl ani neskryl a které
+   * nejsou starší než `unreadWindowDays`. Řadí se relevancí od editora s útlumem podle stáří, takže stará
+   * vysoko hodnocená položka neuvízne navrchu. Už viděné klesají pod ty, které uživatel nikdy neměl před očima.
+   */
+  async unreadStream(principal: Principal, windowDays = 14): Promise<FeedItem[]> {
+    this.assertHistoryAccess(principal);
+    return this.repository.read(principal.uid, async (tx) => {
+      const now = this.clock.now();
+      const cutoff = now.getTime() - windowDays * 86_400_000;
+      const items = await this.libraryItems(tx);
+      const fresh = items.filter((entry) => {
+        if (entry.state.read || entry.state.hidden) return false;
+        const at = entry.item.provenance[0]?.publishedAt ?? entry.item.createdAt;
+        const stamp = new Date(at).getTime();
+        return Number.isFinite(stamp) && stamp >= cutoff;
+      });
+      const score = (entry: FeedItem): number => {
+        const at = entry.item.provenance[0]?.publishedAt ?? entry.item.createdAt;
+        const ageDays = Math.max(0, (now.getTime() - new Date(at).getTime()) / 86_400_000);
+        // Poločas tři dny: po třech dnech má položka poloviční váhu, po šesti čtvrtinovou.
+        const decay = Math.pow(0.5, ageDays / 3);
+        const seenPenalty = entry.state.seenAt ? 0.45 : 1;
+        return (entry.item.assessment?.relevance ?? 50) * decay * seenPenalty;
+      };
+      return fresh.sort((left, right) => score(right) - score(left));
+    });
+  }
   /** Candidates still eligible for the next editorial run. */
   async pendingCandidates(principal: Principal): Promise<Candidate[]> {
     this.assertHistoryAccess(principal);
@@ -790,6 +831,60 @@ export class EditorialService {
       );
       if (!content) throw new SifteraError("CONTENT_EXPIRED");
       return content;
+    });
+  }
+  /** Reserve a bounded read before network I/O; only a snapshot-owned URL can be fetched. */
+  async readOriginal(principal: Principal, runId: string, candidateId: string, reader: ArticleReader): Promise<ArticleRead> {
+    this.assertScope(principal, "candidates:read");
+    const reservation = await this.repository.transaction(principal.uid, async tx => {
+      const draft = this.draft(await tx.getRun(runId));
+      this.assertLiveDraft(draft);
+      if ((await tx.getFeedPointer()).activeRunId !== runId) throw new SifteraError("RUN_NOT_ACTIVE");
+      if ((await tx.getPreferences())?.version !== draft.preference.version) throw new SifteraError("STALE_PREFERENCES");
+      const ref = draft.run.candidateRefs.find(ref => ref.candidateId === candidateId);
+      const record = await tx.getCandidate(candidateId);
+      if (!ref || !record) throw new SifteraError("NOT_FOUND");
+      if (record.candidate.revision !== ref.revision) throw new SifteraError("CANDIDATE_CHANGED");
+      const existing = draft.articleReads?.find(read => read.candidateId === candidateId);
+      if (existing) return { existing, url: null };
+      if ((draft.articleReads?.length ?? 0) >= Math.min(20, draft.preference.contentReadLimit)) throw new SifteraError("CONTENT_READ_LIMIT");
+      const read: ArticleRead = { candidateId, revision: ref.revision, status: "pending", fetchedAt: iso(this.clock.now()), text: "", title: null, access: "unavailable", paywall: false, truncated: false };
+      draft.articleReads = [...(draft.articleReads ?? []), read];
+      await tx.putRun(draft);
+      return { existing: read, url: record.candidate.canonicalUrl };
+    });
+    if (!reservation.url) return reservation.existing;
+    let read: ArticleRead;
+    try {
+      const page = await reader.read(reservation.url);
+      const truncated = page.truncated || page.text.length > 24_000;
+      read = { ...reservation.existing, ...page, text: page.text.slice(0, 24_000), truncated, access: page.paywall || truncated ? "partial" : page.access, status: "ready" };
+    } catch {
+      read = { ...reservation.existing, status: "failed" };
+    }
+    return this.repository.transaction(principal.uid, async tx => {
+      const draft = this.draft(await tx.getRun(runId));
+      this.assertLiveDraft(draft);
+      if ((await tx.getFeedPointer()).activeRunId !== runId) throw new SifteraError("RUN_NOT_ACTIVE");
+      if ((await tx.getPreferences())?.version !== draft.preference.version) throw new SifteraError("STALE_PREFERENCES");
+      const record = await tx.getCandidate(candidateId);
+      if (!record || record.candidate.revision !== read.revision) throw new SifteraError("CANDIDATE_CHANGED");
+      // Hydration preserves the source revision and identity. Partial page text stays in the draft.
+      if (read.access === "full" && read.text) {
+        const previous = await this.contentStore.get(principal.uid, candidateId, read.revision);
+        const content = previous?.access === "full" ? previous : candidateContentSchema.parse({
+          candidateId, revision: read.revision, text: read.text, access: "full", contentHash: hash(normalizedWhitespace(read.text)),
+          extractedAt: read.fetchedAt, extractorVersion: "readability-v1", truncated: false, originalCharacterCount: read.text.length,
+        });
+        if (previous?.access !== "full") await this.contentStore.put(principal.uid, content);
+        record.candidate.contentHash = content.contentHash;
+        record.candidate.contentRef = contentKey(candidateId, read.revision);
+        record.candidate.access = "full";
+        await tx.putCandidate(record);
+      }
+      draft.articleReads = (draft.articleReads ?? []).map(entry => entry.candidateId === candidateId ? read : entry);
+      await tx.putRun(draft);
+      return read;
     });
   }
   async readRunContent(
@@ -846,6 +941,32 @@ export class EditorialService {
         });
       await tx.putRun(draft);
       return content;
+    });
+  }
+  /**
+   * Zapíše, že uživatel položky viděl (ADR-015). Jde o slabý signál, ne o uživatelovu volbu: první značka
+   * platí, další se ignorují, a nikdy nepřepisuje read/saved/hidden ani nezvedá konflikt verzí — proto
+   * nejde přes `patchState`. Položky bez stavu se založí, existující jen doplní `seenAt`.
+   */
+  async markSeen(principal: Principal, candidateIds: string[], at?: Date): Promise<number> {
+    this.assertUserOrSystem(principal);
+    const unique = [...new Set(candidateIds)].slice(0, 200);
+    if (!unique.length) return 0;
+    const stamp = iso(at ?? this.clock.now());
+    return this.repository.transaction(principal.uid, async (tx) => {
+      let written = 0;
+      for (const candidateId of unique) {
+        const candidate = await tx.getCandidate(candidateId);
+        if (!candidate) continue;
+        const current = await tx.getState(candidateId);
+        if (current?.seenAt) continue;
+        const next = current
+          ? { ...current, seenAt: stamp }
+          : itemStateSchema.parse({ candidateId, read: false, saved: false, hidden: false, seenAt: stamp, version: 0, updatedAt: stamp });
+        await tx.putState(next);
+        written += 1;
+      }
+      return written;
     });
   }
   async patchState(
@@ -1256,6 +1377,7 @@ export class EditorialService {
         read: false,
         saved: false,
         hidden: false,
+        seenAt: null,
         version: 0,
         updatedAt: stored.createdAt,
       },

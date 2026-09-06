@@ -1,7 +1,7 @@
 import { EditorialService } from "../../packages/core/src/index.js";
 import { D1Repository, R2ContentStore, type SqlDatabase, type ObjectBucket } from "../../packages/storage/src/cloudflare.js";
 import { createPrototypeApi, type PrototypeAuxStore, type PrototypeSource } from "../../packages/prototype-api/src/index.js";
-import { createDefaultConnectorRegistry, SafeHttpClient, type ResolvedAddress } from "../../packages/connectors/src/index.js";
+import { createDefaultConnectorRegistry, PublicArticleReader, SafeHttpClient, type ResolvedAddress } from "../../packages/connectors/src/index.js";
 
 export interface HostedEnvironment { DB: SqlDatabase; CONTENT: ObjectBucket; ASSETS?: {fetch(request: Request): Promise<Response>} }
 export class D1SourceStore implements PrototypeAuxStore {
@@ -41,6 +41,7 @@ export default {
     const registry = createDefaultConnectorRegistry({http:new SafeHttpClient({fetch:(input,init)=>fetch(input,init),resolveHost:resolvePublicHost,maxBodyBytes:2*1024*1024,timeoutMs:12000})});
     const service = new EditorialService(repository,contentStore,{now:()=>new Date()},{next:()=>crypto.randomUUID()});
     const handler = createPrototypeApi({service,repository,contentStore,auxStore:new D1SourceStore(env.DB),
+      articleReader: new PublicArticleReader(new SafeHttpClient({fetch:(input,init)=>fetch(input,init),resolveHost:resolvePublicHost,maxBodyBytes:2*1024*1024,timeoutMs:6000,maxRedirects:2})),
       resolvePrincipal:async req => {
         // Sites dispatcher strips client-supplied identity headers and forwards its verified viewer.
         const uid = req.headers.get("oai-authenticated-user-id");

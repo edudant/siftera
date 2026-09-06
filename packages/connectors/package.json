@@ -11,8 +11,10 @@
     "build": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
+    "@mozilla/readability": "^0.6.0",
     "@siftera/core": "workspace:*",
     "@siftera/shared": "workspace:*",
-    "fast-xml-parser": "^5.11.1"
+    "fast-xml-parser": "^5.11.1",
+    "linkedom": "^0.18.13"
   }
 }

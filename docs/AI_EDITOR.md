@@ -1,5 +1,22 @@
 # Externí AI editor
 
+## Aktuální realizace: dvoustupňová redakce (ADR-017)
+
+Tato sekce nahrazuje starý jednorázový export a popisuje běžící prototyp. Detailní MCP workflow níže zůstává cílovým rozhraním, nikoli hotovým transportem.
+
+1. **Přehled:** `POST /editor/export` nad již uloženými kandidáty vytvoří nebo obnoví aktivní hodinový run. Předvýběr zůstává deterministický (nejvýše80), AI se nezapojuje do sběru zdrojů. Každý kandidát nese `ageDays`, `state.read/seenAt/saved/hidden`, zdroj a jeho imageMode, uložený text pokud se vejde do rozpočtu, `fullTextReceipt` a případný `articleRead`. Preference jsou snapshotem runu; po změně preferencí se starý run odmítne.
+2. **Shortlist:** editor může vrátit `{shortlistCandidateIds:[...]}`. Uživatel jej vloží v AI editoru; alternativně použije doporučených nejvýše12 kandidátů z předvýběru. Výchozí seznam lze nahradit vlastním AI výběrem. Levný průchod čte hlavně metadata, podrobná redakce až doplněné podklady.
+3. **Originály:** UI zavolá `POST /editor/enrich` s runId a nejvýše4 candidateIds v dávce. Celý run má limit `min(20,contentReadLimit)` pokusů včetně chyb. Server použije pouze uloženou URL vlastněného kandidáta, anonymní safe HTTP a Readability. Neprovádí další crawling ani stahování na příkaz článku. Stejný kandidát se v runu znovu nestahuje. Chyby jsou stav failed, zůstává RSS podklad. Po expiraci, změně preferencí či revize je třeba nový run.
+4. **Dostupnost:** max24k znaků/originál. Odstraní se skripty a explicitně skrytý obsah. U deklarovaného paywallu se použije jen veřejný meta popis; subscriber body z HTML/JSON se nečte. Krátká nebo useknutá extrakce je partial. Dostatečný extrahovaný text bez zjištěného omezení je full; heuristika není univerzální zárukou úplnosti všech webů. Full se hydratuje k existující revizi, partial zůstává jako podklad runu. Export úplného textu udělí receipt. Neúplný text nikdy neopravňuje long_read či distilled_fact.
+5. **Kontext:** export nese posledních40 publikovaných položek (stručná shrnutí, témata, zdroje, stavy) a nejvýše60 knownTopics. Automatické slučování různých URL stejné události provádí editor podle obsahu a historie; URL deduplikace zůstává v ingestu. RecentlyIgnored je volitelný a vylučuje uložené položky. Saved je uložení na později, ne explicitní like. Agregace explicitního more/good/less/discovery feedbacku z původního plánu zatím není do exportu zapojená.
+6. **Obsah a forma:** editor u každé položky vrátí presentation, emphasis a imageTreatment. Presentation = významový typ (article/long_read/distilled_fact/school_notice/video/audio), emphasis = lead/standard/compact/text, imageTreatment = auto/show/hide. Nemůže přidat vlastní URL obrázku. Obrázky pocházejí z ingestu, source.imageMode přebíjí AI volbu a UI nedovolí roztáhnout malý náhled. Topics opakovaně používají známé slugs, pokud sedí; uživatelské kategorie jsou stále filtry.
+7. **Publikace:** odpověď má `submission` (do10 položek) nebo `submissions` (dávky po10, celkem do50), společný run a editor, unikátní batchId, a jediné orderedCandidateIds od nejzajímavějších. API ověří strukturu všech dávek před zápisem, doménová validace a přijetí probíhají po dávkách; teprve úspěšná závěrečná publikace změní feed atomicky. Při selhání pozdější dávky může předchozí zůstat v draftu, opakování stejné odpovědi je idempotentní. UI zachová operationId pro opakování stejné odpovědi.
+
+Prompt je verzovaný jako `editor-v2` v `packages/prototype-api/src/editor-prompt.ts` a je součástí exportu. UI provádí skutečné doplnění originálů a import, samotný model běží v externím klientovi. Není zavedené placené LLM API ani automatický cron.
+
+Pořadí publikace navrhuje AI, zatímco proud napříč vydáními používá její relevanci s časovým útlumem a seen podle ADR-015. Cílem není náhodně střídat karty: hlavní příběh může být lead, stručná zpráva compact, destilovaná informace text; kvalita podkladů má přednost před pestrostí vzhledu.
+
+
 ## Úloha
 
 Rychle rozhodnout: vyřadit, krátce sdělit podstatu, nebo doporučit originál; sestavit pestrý denní celek. Neprovádět rešerši pravdivosti. `quality` je redakční užitečnost, `basis` říká, zda byl dostupný text, výňatek či pouze metadata. Původní požadavek na detailní confidence/factual scoring je tímto nahrazen dle upřesnění uživatele.

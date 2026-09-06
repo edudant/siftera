@@ -14,7 +14,9 @@
     "build:hosted": "node scripts/build-hosted.mjs",
     "dev:hosted": "wrangler dev --ip 127.0.0.1 --port 8787",
     "emulators": "firebase emulators:start --project demo-siftera --only auth,firestore,storage",
-    "test:integration": "firebase emulators:exec --project demo-siftera --only auth,firestore,storage -- \"vitest run --config vitest.integration.config.ts\""
+    "test:integration": "firebase emulators:exec --project demo-siftera --only auth,firestore,storage -- \"vitest run --config vitest.integration.config.ts\"",
+    "build:pages": "node scripts/build-pages.mjs",
+    "demo:feed": "node scripts/build-demo-feed.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260905.1",
