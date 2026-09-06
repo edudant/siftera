@@ -2,7 +2,7 @@ import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { createHash } from "node:crypto";
-import type { CandidateContent } from "@siftera/shared";
+import type { CandidateContent, UserItemState } from "@siftera/shared";
 import { candidateContentSchema } from "@siftera/shared";
 import type {
   CandidateRecord,
@@ -174,6 +174,18 @@ class FirebaseRead implements RepositoryRead {
       .sort((left, right) => right.sortDate.localeCompare(left.sortDate) || left.candidateId.localeCompare(right.candidateId))
       .slice(0, limit)
       .map(({ candidateId, editorialItemId }) => ({ candidateId, editorialItemId }));
+  }
+  async listStates(limit: number) {
+    const values = await this.query("states", "data.updatedAt", "desc", bounded(limit));
+    return values.map(([, value]) => unwrap<UserItemState>(value)).filter((value): value is UserItemState => value !== null);
+  }
+  async listSourceMetadata(limit: number) {
+    const values = await this.query("sourceMetadata", "data.sourceId", "asc", bounded(limit));
+    return values.map(([, value]) => unwrap<SourceMetadata>(value)).filter((value): value is SourceMetadata => value !== null);
+  }
+  async listEditorialItems(ids: string[]) {
+    const found = await Promise.all([...new Set(ids)].map((id) => this.getEditorialItem(id)));
+    return found.filter((value): value is StoredEditorialItem => value !== null);
   }
   async listRecentEditorialMetadata(since: string, limit: number) {
     const values = await this.query("editorialItems", "data.createdAt", "desc", bounded(limit));

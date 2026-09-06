@@ -55,6 +55,32 @@ class D1Read implements RepositoryRead {
   async getFeedPointer(): Promise<FeedPointer> { return await this.get<FeedPointer>("system", "feed") ?? {latestRunId: null, activeRunId: null, generation: 0}; }
   listCandidates(limit: number) { return this.list<CandidateRecord>("candidates", limit); }
   listLibrary(limit: number) { return this.list<LibraryItem>("library", limit); }
+  listStates(limit: number) { return this.list<UserItemState>("states", limit); }
+  listSourceMetadata(limit: number) { return this.list<SourceMetadata>("sourceMetadata", limit); }
+  async listEditorialItems(ids: string[]) {
+    if (!ids.length) return [];
+    const unique = [...new Set(ids)].slice(0, 3000);
+    const found: StoredEditorialItem[] = [];
+    // D1 má strop na počet vazeb v jednom dotazu, takže se čte po dávkách místo po jedné položce.
+    for (let index = 0; index < unique.length; index += 100) {
+      const chunk = unique.slice(index, index + 100);
+      const rows = await this.db
+        .prepare(`SELECT data FROM siftera_records WHERE uid=? AND collection=? AND id IN (${chunk.map(() => "?").join(",")})`)
+        .bind(this.uid, "editorial", ...chunk)
+        .all<{ data: string }>();
+      for (const row of rows.results) {
+        const wrapped = JSON.parse(row.data) as { schemaVersion: number; value: StoredEditorialItem };
+        if (wrapped.schemaVersion !== 1) throw new Error("Migration required");
+        found.push(wrapped.value);
+      }
+    }
+    for (const row of this.pending.values()) {
+      if (row.collection !== "editorial" || !unique.includes(row.id)) continue;
+      const wrapped = JSON.parse(row.data) as { schemaVersion: number; value: StoredEditorialItem };
+      found.push(wrapped.value);
+    }
+    return found;
+  }
   async listRecentEditorialMetadata(since: string, limit: number) {
     return (await this.list<StoredEditorialItem>("editorial", limit, since)).map(({candidateId,revision,producer,createdAt})=>({candidateId,revision,producer,createdAt}));
   }

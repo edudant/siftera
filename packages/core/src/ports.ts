@@ -152,6 +152,13 @@ export interface RepositoryRead {
   /** Newest discovery first; ties use the candidate ID ascending; limit is 1..3000. */
   listCandidates(limit: number): Promise<CandidateRecord[]>;
   listLibrary(limit: number): Promise<LibraryItem[]>;
+  /**
+   * Dávkové čtení pro pohledy nad celým účtem. Bez nich vzniká N+1: jeden bootstrap dělal 661 dotazů do D1
+   * a rostlo to lineárně s počtem kandidátů, což naráží na limit dotazů na request i na latenci.
+   */
+  listStates(limit: number): Promise<UserItemState[]>;
+  listSourceMetadata(limit: number): Promise<SourceMetadata[]>;
+  listEditorialItems(ids: string[]): Promise<StoredEditorialItem[]>;
   /** Newest creation first; limit is 1..3000. */
   listRecentEditorialMetadata(
     since: string,

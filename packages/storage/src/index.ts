@@ -78,6 +78,9 @@ class MemoryRead implements RepositoryRead {
     );
   }
   async listLibrary(limit: number) { return copy([...this.data.library.values()].slice(0, bounded(limit, 3000))); }
+  async listStates(limit: number) { return copy([...this.data.states.values()].slice(0, bounded(limit, 3000))); }
+  async listSourceMetadata(limit: number) { return copy([...this.data.sourceMetadata.values()].slice(0, bounded(limit, 3000))); }
+  async listEditorialItems(ids: string[]) { return copy(ids.map((id) => this.data.editorialItems.get(id)).filter((value): value is StoredEditorialItem => value !== undefined)); }
   async listRecentEditorialMetadata(since: string, limit: number) {
     const take = bounded(limit, 3000);
     return copy(

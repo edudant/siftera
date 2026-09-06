@@ -1198,11 +1198,14 @@ export class EditorialService {
       iso(new Date(now.getTime() - 7 * 86_400_000)),
       3000,
     );
+    const [allStates, allSources] = await Promise.all([tx.listStates(3000), tx.listSourceMetadata(3000)]);
+    const stateByCandidate = new Map(allStates.map((entry) => [entry.candidateId, entry]));
+    const sourceById = new Map(allSources.map((entry) => [entry.sourceId, entry]));
     const descriptors = (
       await Promise.all(
         records.map(async ({ candidate }) => {
-          const state = await tx.getState(candidate.id);
-          const source = await tx.getSourceMetadata(candidate.sourceId);
+          const state = stateByCandidate.get(candidate.id) ?? null;
+          const source = sourceById.get(candidate.sourceId) ?? null;
           const date = effectiveDate(candidate);
           const words = `${candidate.title} ${candidate.excerpt} ${candidate.categories.join(" ")}`.toLowerCase();
           const topics = candidate.categories.map((topic) => topic.toLowerCase());
@@ -1341,13 +1344,19 @@ export class EditorialService {
   }
   private async libraryItems(tx: RepositoryRead): Promise<FeedItem[]> {
     const library = await tx.listLibrary(3000);
-    return Promise.all(
-      library.map(async (libraryItem) =>
-        this.toFeedItem(
-          await tx.getEditorialItem(libraryItem.editorialItemId),
-          await tx.getState(libraryItem.candidateId),
-          null,
-        ),
+    if (!library.length) return [];
+    // Dávkově, ne po položce: dřív to byly dva dotazy na každý článek v knihovně.
+    const [items, states] = await Promise.all([
+      tx.listEditorialItems(library.map((entry) => entry.editorialItemId)),
+      tx.listStates(3000),
+    ]);
+    const byItemId = new Map(items.map((item) => [item.id, item]));
+    const byCandidate = new Map(states.map((state) => [state.candidateId, state]));
+    return library.map((libraryItem) =>
+      this.toFeedItem(
+        byItemId.get(libraryItem.editorialItemId) ?? null,
+        byCandidate.get(libraryItem.candidateId) ?? null,
+        null,
       ),
     );
   }

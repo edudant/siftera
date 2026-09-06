@@ -2,6 +2,18 @@
 
 Status accepted, v1, 2026-09-06. Tento soubor uzavírá doporučené volby; změny vyžadují konkrétní důvod a dopad, nikoli opakované obecné porovnávání stacků.
 
+## ADR-019 Produkční Worker: token, CORS a ingest zvenčí
+
+6. 9. potvrzen cílový tok GitHub Pages → Cloudflare Worker → D1/R2, se sběrem RSS a AI v lokálním procesu. Před nasazením se ukázaly tři překážky, všechny změřené na běžícím Workeru.
+
+**Dotazy do D1.** Jeden bootstrap dělal 661 dotazů a rostl lineárně s počtem kandidátů — `prefilter` i bootstrap se ptaly zvlášť na stav a metadata zdroje pro každou položku. To naráží na limit dotazů na request i na latenci. Port `RepositoryRead` proto dostal dávkové čtení (`listStates`, `listSourceMetadata`, `listEditorialItems`) a horká místa je používají. Výsledek: 38 dotazů konstantně bez ohledu na objem dat, odezva ze ~300 ms na ~38 ms.
+
+**Identita.** Dosavadní `resolvePrincipal` bral UID z hlavičky, kterou si klient nastaví sám; to bylo bezpečné jen za Sites dispatcherem. Bez něj by veřejný Worker byl otevřenou databází. Identitu proto nese sdílené tajemství v `Authorization: Bearer`, porovnávané v konstantním čase, a UID vlastníka je serverová konfigurace. Token v UI zadá uživatel a drží ho prohlížeč; pro jeden účet to stačí a nevyžaduje to OAuth. Kdo token získá, má plný přístup — víc účtů bude chtít skutečné přihlášení.
+
+**Cross-origin.** UI na Pages a API na Workeru jsou dvě domény, takže bylo potřeba doplnit CORS i preflight. Dosavadní same-origin CSRF kontrola by z Pages odmítla všechny zápisy; nahradil ji allowlist originů. S tokenem v hlavičce CSRF nehrozí, protože prohlížeč cizí požadavek nepodepíše.
+
+Worker přestává stahovat RSS: `collect` přijímá jen ruční vstup a nový `POST /ingest` bere připravené dávky (max 100 položek). Sběr běží v `pnpm ingest:once`, kde na CPU čas ani subrequesty nejsou limity edge runtime. Ruční vložení odkazu zůstává, protože nic zvenčí nestahuje.
+
 ## ADR-018 GitHub Pages a veřejná ukázka
 
 Uživatel přešel na jiný ChatGPT účet a výslovně nahrazuje Sites nasazením na GitHub Pages. První Pages varianta hostuje statické UI a veřejný sanitizovaný ukázkový feed odvozený z dev. Čtenářské stavy, preference a ruční vstupy se ukládají pouze v konkrétním prohlížeči; nejde o sdílenou privátní serverovou databázi. RSS sběr a dvoustupňová AI redakce s doplněním originálů zůstávají v lokálním backendu. Pages se nesmí tvářit, že umí obejít CORS nebo hostovat Worker; tyto akce jasně vyžadují backend. Oddělení api adapteru zachová cestu k pozdějšímu samostatnému API. Testovací feed obsahuje pouze veřejné článkové metadata a krátké redakční výstupy, žádné uživatelské identity, privátní instrukce ani plná těla článků.

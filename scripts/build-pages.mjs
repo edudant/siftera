@@ -7,13 +7,17 @@ import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync } fr
 import process from 'node:process';
 
 const base = process.env.BASE_PATH ?? '/siftera/';
-if (!existsSync('apps/web/public/demo-feed.json')) {
-  console.error('Chybí apps/web/public/demo-feed.json — bez ukázkových dat by byl web prázdný.');
+// S adresou API se staví ostrá varianta proti Workeru; bez ní statická ukázka nad snapshotem.
+const apiBase = process.env.VITE_API_BASE_URL ?? '';
+if (!apiBase && !existsSync('apps/web/public/demo-feed.json')) {
+  console.error('Chybí apps/web/public/demo-feed.json — bez ukázkových dat i bez VITE_API_BASE_URL by byl web prázdný.');
   process.exit(1);
 }
 const result = spawnSync('pnpm', ['--filter', '@siftera/web', 'build'], {
   stdio: 'inherit',
-  env: { ...process.env, BASE_PATH: base, VITE_DEMO: '1' },
+  env: apiBase
+    ? { ...process.env, BASE_PATH: base, VITE_API_BASE_URL: apiBase, VITE_DEMO: '' }
+    : { ...process.env, BASE_PATH: base, VITE_DEMO: '1' },
 });
 if (result.status !== 0) process.exit(result.status ?? 1);
 
@@ -25,4 +29,4 @@ cpSync('apps/web/dist', 'dist/pages', { recursive: true });
 copyFileSync('dist/pages/index.html', 'dist/pages/404.html');
 // Bez .nojekyll Pages zahodí soubory a složky začínající podtržítkem.
 writeFileSync('dist/pages/.nojekyll', '');
-console.log(`Hotovo: dist/pages (base ${base})`);
+console.log(`Hotovo: dist/pages (base ${base}, ${apiBase ? `API ${apiBase}` : 'statická ukázka'})`);

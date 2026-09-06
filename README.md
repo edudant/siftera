@@ -23,6 +23,36 @@ pnpm build:pages      # výstup v dist/pages
 
 Ukázka čte sanitizovaný snapshot `apps/web/public/demo-feed.json` — jen veřejná článková metadata a krátké redakční výstupy, žádné identity ani plná těla článků. Čtení, ukládání a ruční vstupy se drží pouze v prohlížeči konkrétního návštěvníka. Sběr z RSS a redakční export/import backend potřebují a ukázka to říká otevřeně místo tichého selhání; Pages neumí obejít CORS ani hostovat Worker. Nasazení obstará workflow `.github/workflows/pages.yml` po pushi do hlavní větve.
 
+### Produkční nasazení Workeru
+
+Worker je API; RSS ani AI na něm neběží. Sběr obstará lokální proces, Worker jen validuje, dedupuje a zapisuje do D1/R2:
+
+```sh
+pnpm exec wrangler login
+pnpm exec wrangler d1 create siftera-prod
+pnpm exec wrangler r2 bucket create siftera-content-prod
+# database_id z výstupu zapiš do wrangler.jsonc
+pnpm exec wrangler secret put API_TOKEN
+pnpm exec wrangler secret put OWNER_UID
+pnpm build:hosted
+pnpm exec wrangler d1 migrations apply siftera-prod --remote
+pnpm exec wrangler deploy
+```
+
+`ALLOWED_ORIGINS` musí obsahovat adresu webu (například `https://edudant.github.io`), jinak prohlížeč cross-origin volání zablokuje. Bez `API_TOKEN` API odmítne všechno — identita se bere z tokenu, nikdy z hlavičky, kterou by si mohl nastavit klient sám.
+
+Web proti produkčnímu API se staví s adresou API místo ukázkových dat:
+
+```sh
+VITE_API_BASE_URL=https://siftera-api.<subdoména>.workers.dev pnpm build:pages
+```
+
+Ingest z lokálu (vhodné pro cron):
+
+```sh
+SIFTERA_API=https://siftera-api.<subdoména>.workers.dev SIFTERA_TOKEN=… pnpm ingest:once
+```
+
 Hosted build je samostatný Worker se statickým React klientem. Firebase je v repozitáři jen pro emulátory a Firestore/Storage adaptéry — hosting na něm nastavený není. Není to automatický cron, plný MCP ani dokončený původní MVP plán.
 
 ## Stav původního plánu

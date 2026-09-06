@@ -3,7 +3,25 @@ import { D1Repository, R2ContentStore, type SqlDatabase, type ObjectBucket } fro
 import { createPrototypeApi, type PrototypeAuxStore, type PrototypeSource } from "../../packages/prototype-api/src/index.js";
 import { createDefaultConnectorRegistry, PublicArticleReader, SafeHttpClient, type ResolvedAddress } from "../../packages/connectors/src/index.js";
 
-export interface HostedEnvironment { DB: SqlDatabase; CONTENT: ObjectBucket; ASSETS?: {fetch(request: Request): Promise<Response>} }
+export interface HostedEnvironment {
+  DB: SqlDatabase;
+  CONTENT: ObjectBucket;
+  ASSETS?: { fetch(request: Request): Promise<Response> };
+  /** Sdílené tajemství pro jediný účet prototypu. Bez něj API odmítne všechno. */
+  API_TOKEN?: string;
+  /** UID, pod kterým data patří vlastníkovi tokenu. */
+  OWNER_UID?: string;
+  /** Čárkou oddělené originy webu, který smí API volat z prohlížeče. */
+  ALLOWED_ORIGINS?: string;
+}
+
+/** Porovnání tokenů v konstantním čase, aby délka odpovědi neprozradila shodu prefixu. */
+function sameSecret(left: string, right: string): boolean {
+  if (left.length !== right.length) return false;
+  let diff = 0;
+  for (let index = 0; index < left.length; index += 1) diff |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  return diff === 0;
+}
 export class D1SourceStore implements PrototypeAuxStore {
   constructor(private db: SqlDatabase) {}
   async listSources(uid: string) { const result = await this.db.prepare("SELECT data FROM siftera_sources WHERE uid=? ORDER BY id LIMIT 51").bind(uid).all<{data:string}>(); return result.results.map(row => JSON.parse(row.data) as PrototypeSource); }
@@ -42,14 +60,21 @@ export default {
     const service = new EditorialService(repository,contentStore,{now:()=>new Date()},{next:()=>crypto.randomUUID()});
     const handler = createPrototypeApi({service,repository,contentStore,auxStore:new D1SourceStore(env.DB),
       articleReader: new PublicArticleReader(new SafeHttpClient({fetch:(input,init)=>fetch(input,init),resolveHost:resolvePublicHost,maxBodyBytes:2*1024*1024,timeoutMs:6000,maxRedirects:2})),
-      resolvePrincipal:async req => {
-        // Sites dispatcher strips client-supplied identity headers and forwards its verified viewer.
-        const uid = req.headers.get("oai-authenticated-user-id");
-        if (!uid) return null;
-        return {principal:{uid,kind:"user",scopes:[]},email:req.headers.get("oai-authenticated-user-email")};
+      allowedOrigins: (env.ALLOWED_ORIGINS ?? "").split(",").map(value => value.trim()).filter(Boolean),
+      resolvePrincipal: async req => {
+        // Identita pochází ze sdíleného tajemství, ne z hlavičky, kterou si klient nastaví sám.
+        const token = env.API_TOKEN;
+        if (!token) return null;
+        const header = req.headers.get("authorization") ?? "";
+        const presented = header.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : "";
+        if (!presented || !sameSecret(presented, token)) return null;
+        return { principal: { uid: env.OWNER_UID ?? "owner", kind: "user", scopes: [] }, email: null };
       },
+      // RSS a AI běží v lokálním procesu; Worker jen přijímá připravené dávky přes /ingest.
+      // Ruční vložení odkazu zůstává, protože nestahuje nic zvenčí.
       connectors:{collect:async (pluginId,input) => {
-        return pluginId === "manual" ? registry.collect("manual",input) : registry.collect("rss",{...input,maxItems:25});
+        if (pluginId !== "manual") throw new Error("SOURCE_FETCH_IS_LOCAL");
+        return registry.collect("manual",input);
       }},
     });
     return handler(request);

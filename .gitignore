@@ -11,3 +11,5 @@ coverage/
 /.firebase/
 *-debug.log
 /.wrangler/
+.dev.vars
+.dev.vars.*

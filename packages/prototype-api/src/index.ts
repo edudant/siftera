@@ -93,6 +93,8 @@ export interface PrototypeApiDependencies {
   connectors?: PrototypeConnectorRegistry;
   articleReader?: ArticleReader;
   createId?: () => string;
+  /** Originy webu, který smí API volat z prohlížeče. Bez nich API funguje jen ze stejné domény. */
+  allowedOrigins?: string[];
 }
 
 const now = () => new Date().toISOString();
@@ -168,11 +170,28 @@ function requestError(error: unknown): Response {
     return apiError(error.code, error.message, errorStatus(error.code));
   return apiError("INTERNAL", "The request could not be completed.", 500);
 }
-function isSameOrigin(request: Request): boolean {
+/**
+ * Origin musí sedět buď na samotné API (klasické same-origin nasazení), nebo na výslovně povolený web.
+ * Chybějící Origin je server-to-server volání (lokální ingest), které prohlížeč neposílá.
+ */
+function originAllowed(request: Request, allowed: Set<string>): boolean {
   const origin = request.headers.get("origin");
-  if (!origin) return false;
-  try { return new URL(origin).origin === new URL(request.url).origin; }
-  catch { return false; }
+  if (!origin) return allowed.size > 0;
+  try {
+    const value = new URL(origin).origin;
+    return value === new URL(request.url).origin || allowed.has(value);
+  } catch { return false; }
+}
+function corsHeaders(request: Request, allowed: Set<string>): Record<string, string> {
+  const origin = request.headers.get("origin");
+  if (!origin || !allowed.has(origin)) return {};
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Headers": "authorization,content-type,accept",
+    "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS",
+    "Access-Control-Max-Age": "600",
+    Vary: "Origin",
+  };
 }
 async function jsonBody<T>(request: Request, schema: ZodType<T>): Promise<T> {
   const type = request.headers.get("content-type")?.toLowerCase() ?? "";
@@ -188,8 +207,8 @@ async function jsonBody<T>(request: Request, schema: ZodType<T>): Promise<T> {
   catch { throw new SifteraError("INVALID_JSON"); }
   return schema.parse(parsed);
 }
-function assertMutation(request: Request): void {
-  if (!isSameOrigin(request)) throw new SifteraError("CSRF_REJECTED");
+function assertMutation(request: Request, allowed: Set<string>): void {
+  if (!originAllowed(request, allowed)) throw new SifteraError("CSRF_REJECTED");
 }
 function route(pathname: string): string[] | null {
   const prefix = "/api/v1/";
@@ -213,6 +232,22 @@ const sourceCreateRequest = z.object({ name: z.string().trim().min(1).max(200), 
 const sourcePatchRequest = z.object({ enabled: z.boolean().optional(), name: z.string().trim().min(1).max(200).optional(), imageMode: z.enum(["auto", "large", "small", "none"]).optional() }).strict().refine((value) => Object.keys(value).length > 0);
 const preferenceRequest = z.object({ preferences: preferenceSchema, expectedVersion: z.number().int().min(1) }).strict();
 const stateRequest = z.object({ patch: z.object({ read: z.boolean().optional(), saved: z.boolean().optional(), hidden: z.boolean().optional() }).strict().refine((value) => Object.keys(value).length > 0), expectedVersion: z.number().int().nonnegative(), operationId: idSchema }).strict();
+const ingestRequest = z.object({
+  sourceId: idSchema,
+  sourceName: z.string().min(1).max(200),
+  groups: z.array(groupSchema).max(10).optional(),
+  deliveryMode: z.enum(["curated", "all"]).optional(),
+  items: z.array(z.object({
+    url: z.string().url().max(2048),
+    title: z.string().min(1).max(500),
+    excerpt: z.string().max(10_000).optional(),
+    body: z.string().max(200_000).nullable().optional(),
+    publishedAt: z.string().datetime().nullable().optional(),
+    categories: z.array(z.string().max(80)).max(30).optional(),
+    image: z.object({ url: z.string().url().max(2048), width: z.number().int().positive().nullable(), height: z.number().int().positive().nullable(), alt: z.string().max(500) }).strict().nullable().optional(),
+    externalId: z.string().max(500).nullable().optional(),
+  }).strict()).min(1).max(100),
+}).strict();
 const seenRequest = z.object({ candidateIds: z.array(idSchema).min(1).max(200) }).strict();
 const editorExportRequest = z.object({ operationId: idSchema }).strict();
 const editorEnrichRequest = z.object({ runId: idSchema, candidateIds: z.array(idSchema).min(1).max(4).refine(ids => new Set(ids).size === ids.length) }).strict();
@@ -238,6 +273,8 @@ const editorAbortRequest = z.object({ runId: idSchema }).strict();
 
 export function createPrototypeApi(dependencies: PrototypeApiDependencies) {
   const { service, repository, contentStore, auxStore, resolvePrincipal, connectors } = dependencies;
+  // Povolené originy UI. Prázdný seznam = API běží na stejné doméně jako klient (lokální vývoj).
+  const allowedOrigins = new Set(dependencies.allowedOrigins ?? []);
   // Keep the explicit contentStore dependency visible at the API boundary: storage
   // is injected with repository/service, never reached through a global provider.
   void contentStore;
@@ -256,13 +293,22 @@ export function createPrototypeApi(dependencies: PrototypeApiDependencies) {
   };
 
   return async function prototypeApi(request: Request): Promise<Response> {
+    const cors = corsHeaders(request, allowedOrigins);
+    // Preflight musí projít dřív než autentizace: prohlížeč na něj hlavičku s tokenem neposílá.
+    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+    const withCors = (response: Response): Response => {
+      if (!Object.keys(cors).length) return response;
+      const headers = new Headers(response.headers);
+      for (const [key, value] of Object.entries(cors)) headers.set(key, value);
+      return new Response(response.body, { status: response.status, headers });
+    };
     const segments = route(new URL(request.url).pathname);
-    if (!segments) return apiError("NOT_FOUND", "Unknown endpoint.", 404);
+    if (!segments) return withCors(apiError("NOT_FOUND", "Unknown endpoint.", 404));
     let resolved: ResolvedPrincipal | null;
     try { resolved = await resolvePrincipal(request); }
-    catch { return apiError("UNAUTHENTICATED", "Authentication failed.", 401); }
-    if (!resolved || !resolved.principal.uid) return apiError("UNAUTHENTICATED", "Authentication is required.", 401);
-    if (resolved.principal.kind === "agent") return apiError("FORBIDDEN", "This prototype API accepts user sessions only.", 403);
+    catch { return withCors(apiError("UNAUTHENTICATED", "Authentication failed.", 401)); }
+    if (!resolved || !resolved.principal.uid) return withCors(apiError("UNAUTHENTICATED", "Authentication is required.", 401));
+    if (resolved.principal.kind === "agent") return withCors(apiError("FORBIDDEN", "This prototype API accepts user sessions only.", 403));
     const principal = resolved.principal;
 
     try {
@@ -277,30 +323,64 @@ export function createPrototypeApi(dependencies: PrototypeApiDependencies) {
         ]);
         // Skryté kandidáty prefilter vypouští, ale UI je musí umět vrátit zpět (UX: skrytí není jednosměrné).
         const [inbox, hidden] = await repository.read(principal.uid, async (tx) => {
-          const withState = async (candidate: Candidate) => ({
+          // Jedno čtení stavů pro celý bootstrap; dřív se ptal zvlášť na každého kandidáta.
+          const [records, states] = await Promise.all([tx.listCandidates(300), tx.listStates(3000)]);
+          const byCandidate = new Map(states.map((entry) => [entry.candidateId, entry]));
+          const withState = (candidate: Candidate) => ({
             candidate,
-            state: (await tx.getState(candidate.id)) ?? initialState(candidate),
+            state: byCandidate.get(candidate.id) ?? initialState(candidate),
           });
-          const records = await tx.listCandidates(300);
-          const hiddenStates = await Promise.all(
-            records.map(async ({ candidate }) => {
-              const state = await tx.getState(candidate.id);
+          const hiddenEntries = records
+            .map(({ candidate }) => {
+              const state = byCandidate.get(candidate.id);
               return state?.hidden ? { candidate, state } : null;
-            }),
-          );
-          return [await Promise.all(pending.map(withState)), hiddenStates.filter((entry) => entry !== null)] as const;
+            })
+            .filter((entry) => entry !== null);
+          return [pending.map(withState), hiddenEntries] as const;
         });
-        return response({ user: { id: principal.uid, email: resolved.email }, preferences, feed, stream, library, inbox, hidden, sources: sources.map(publicSource), plugins: [{ id: "rss", label: "RSS / Atom" }, { id: "manual", label: "Manual article" }] });
+        return withCors(response({ user: { id: principal.uid, email: resolved.email }, preferences, feed, stream, library, inbox, hidden, sources: sources.map(publicSource), plugins: [{ id: "rss", label: "RSS / Atom" }, { id: "manual", label: "Manual article" }] }));
+      }
+
+      if (request.method === "POST" && segments.join("/") === "ingest") {
+        assertMutation(request, allowedOrigins);
+        const body = await jsonBody(request, ingestRequest);
+        let created = 0;
+        let revised = 0;
+        const errors: string[] = [];
+        for (const entry of body.items) {
+          try {
+            const result = await service.ingest(principal, {
+              sourceId: body.sourceId,
+              sourceName: body.sourceName,
+              groups: body.groups ?? [],
+              deliveryMode: body.deliveryMode ?? "curated",
+              url: entry.url,
+              title: entry.title,
+              excerpt: entry.excerpt ?? "",
+              body: entry.body ?? null,
+              publishedAt: entry.publishedAt ?? null,
+              categories: entry.categories ?? [],
+              image: entry.image ?? null,
+              externalId: entry.externalId ?? null,
+              access: entry.body ? "partial" : "unavailable",
+            });
+            if (result.created) created += 1;
+            else if (result.revised) revised += 1;
+          } catch (error) {
+            errors.push(error instanceof Error ? error.message.slice(0, 200) : "Ingest failed");
+          }
+        }
+        return withCors(response({ received: body.items.length, created, revised, errors: errors.slice(0, 10) }));
       }
 
       if (request.method === "POST" && segments.join("/") === "items/seen") {
-        assertMutation(request);
+        assertMutation(request, allowedOrigins);
         const body = await jsonBody(request, seenRequest);
-        return response({ marked: await service.markSeen(principal, body.candidateIds) });
+        return withCors(response({ marked: await service.markSeen(principal, body.candidateIds) }));
       }
 
       if (request.method === "POST" && segments.join("/") === "articles") {
-        assertMutation(request);
+        assertMutation(request, allowedOrigins);
         const body = await jsonBody(request, articleRequest);
         const normalizedUrl = canonicalizeUrl(body.url);
         const title = body.title ?? new URL(normalizedUrl).hostname;
@@ -312,12 +392,12 @@ export function createPrototypeApi(dependencies: PrototypeApiDependencies) {
         const input = collected.inputs[0];
         if (!input) throw new SifteraError("INVALID_ARTICLE");
         const result = await service.ingest(principal, { ...input, sourceId: source.sourceId, sourceName: source.sourceName, groups: [], deliveryMode: "curated", url: normalizedUrl, title });
-        return response({ candidate: result.candidate }, 201);
+        return withCors(response({ candidate: result.candidate }, 201));
       }
 
       if (segments[0] === "sources") {
         if (request.method === "POST" && segments.length === 1) {
-          assertMutation(request);
+          assertMutation(request, allowedOrigins);
           const body = await jsonBody(request, sourceCreateRequest);
           if ((await auxStore.listSources(principal.uid)).length >= MAX_SOURCES)
             throw new SifteraError("SOURCE_LIMIT");
@@ -325,30 +405,30 @@ export function createPrototypeApi(dependencies: PrototypeApiDependencies) {
           const source = sourceSchema.parse({ id: createId(), name: body.name, url: canonicalizeUrl(body.url), pluginId: body.pluginId, groups: body.groups ?? [], deliveryMode: body.deliveryMode ?? "curated", imageMode: body.imageMode ?? "auto", enabled: true, createdAt: stamp, lastFetchedAt: null, lastError: null });
           await auxStore.putSource(principal.uid, source);
           await syncSourceMetadata(principal.uid, source);
-          return response(publicSource(source), 201);
+          return withCors(response(publicSource(source), 201));
         }
         const sourceId = segments[1];
         if (!sourceId || !idSchema.safeParse(sourceId).success) throw new SifteraError("NOT_FOUND");
         if (request.method === "PATCH" && segments.length === 2) {
-          assertMutation(request);
+          assertMutation(request, allowedOrigins);
           const body = await jsonBody(request, sourcePatchRequest);
           const current = await auxStore.getSource(principal.uid, sourceId);
           if (!current) throw new SifteraError("NOT_FOUND");
           const next = sourceSchema.parse({ ...current, ...body });
           await auxStore.putSource(principal.uid, next);
           await syncSourceMetadata(principal.uid, next);
-          return response(publicSource(next));
+          return withCors(response(publicSource(next)));
         }
         if (request.method === "DELETE" && segments.length === 2) {
-          assertMutation(request);
+          assertMutation(request, allowedOrigins);
           const source = await auxStore.getSource(principal.uid, sourceId);
           if (!source) throw new SifteraError("NOT_FOUND");
           await auxStore.deleteSource(principal.uid, sourceId);
           await syncSourceMetadata(principal.uid, { ...source, enabled: false }, now());
-          return response(null, 204);
+          return withCors(response(null, 204));
         }
         if (request.method === "POST" && segments[2] === "refresh" && segments.length === 3) {
-          assertMutation(request);
+          assertMutation(request, allowedOrigins);
           await jsonBody(request, z.object({}).strict());
           const source = await auxStore.getSource(principal.uid, sourceId);
           if (!source) throw new SifteraError("NOT_FOUND");
@@ -358,8 +438,8 @@ export function createPrototypeApi(dependencies: PrototypeApiDependencies) {
           try {
             collected = await connectors.collect("rss", { sourceId: source.id, sourceName: source.name, groups: source.groups, deliveryMode: source.deliveryMode, url: source.url });
           } catch {
-            await auxStore.putSource(principal.uid, sourceSchema.parse({ ...source, lastFetchedAt: now(), lastError: "REFRESH_FAILED" }));
-            return response({ ingested: 0, errors: ["Refresh failed."] });
+            await auxStore.putSource(principal.uid, sourceSchema.parse({ ...source, lastFetchedAt: now(), lastError: "REFRESH_UNAVAILABLE" }));
+            return withCors(response({ ingested: 0, errors: ["Načítání zdrojů běží v lokálním procesu, ne na serveru. Spusťte lokální ingest."] }));
           }
           let ingested = 0;
           const errors = [...(collected.errors ?? [])];
@@ -373,35 +453,35 @@ export function createPrototypeApi(dependencies: PrototypeApiDependencies) {
           }
           const next = sourceSchema.parse({ ...source, lastFetchedAt: now(), lastError: errors[0] ?? null });
           await auxStore.putSource(principal.uid, next);
-          return response({ ingested, errors, complete: !truncated });
+          return withCors(response({ ingested, errors, complete: !truncated }));
         }
       }
 
       if (request.method === "PUT" && segments.join("/") === "preferences") {
-        assertMutation(request);
+        assertMutation(request, allowedOrigins);
         const body = await jsonBody(request, preferenceRequest);
         const value = Object.fromEntries(
           Object.entries(body.preferences).filter(([key]) => key !== "version" && key !== "updatedAt"),
         ) as Omit<PreferenceProfile, "version" | "updatedAt">;
         const preferences = await service.savePreferences(principal, body.expectedVersion, value);
-        return response(preferences);
+        return withCors(response(preferences));
       }
 
       if (request.method === "PATCH" && segments[0] === "items" && segments[2] === "state" && segments.length === 3) {
-        assertMutation(request);
+        assertMutation(request, allowedOrigins);
         const candidateId = segments[1];
         if (!candidateId || !idSchema.safeParse(candidateId).success) throw new SifteraError("NOT_FOUND");
         const body = await jsonBody(request, stateRequest);
         const patch = Object.fromEntries(
           Object.entries(body.patch).filter(([, value]) => value !== undefined),
         ) as Partial<Pick<UserItemState, "read" | "saved" | "hidden">>;
-        return response(await service.patchState(principal, candidateId, body.expectedVersion, patch, body.operationId));
+        return withCors(response(await service.patchState(principal, candidateId, body.expectedVersion, patch, body.operationId)));
       }
 
       if (segments[0] === "editor") {
         const editorPrincipal = systemFor(principal);
         if (request.method === "POST" && segments[1] === "export" && segments.length === 2) {
-          assertMutation(request);
+          assertMutation(request, allowedOrigins);
           const body = await jsonBody(request, editorExportRequest);
           const run = await service.beginRun(editorPrincipal, body.operationId);
           const draft = await service.editorSnapshot(editorPrincipal, run.id);
@@ -449,7 +529,7 @@ export function createPrototypeApi(dependencies: PrototypeApiDependencies) {
                 .slice(0, 30)
                 .map((entry) => ({ headline: entry.item.headline, topics: entry.item.topics, sourceName: entry.item.provenance[0]?.sourceName ?? null, publishedAt: entry.item.provenance[0]?.publishedAt ?? null }))
             : [];
-          return response({
+          return withCors(response({
             run,
             preferences: preference,
             candidates,
@@ -461,19 +541,19 @@ export function createPrototypeApi(dependencies: PrototypeApiDependencies) {
             ...(preference.behaviorEnabled ? { recentlyIgnored: ignored } : {}),
             instructions: preference.behaviorEnabled ? `${editorInstructions}\n\n${behaviorNote}` : editorInstructions,
             schema: editorialSubmissionJsonSchema,
-          });
+          }));
         }
         if (request.method === "POST" && segments[1] === "enrich" && segments.length === 2) {
-          assertMutation(request);
+          assertMutation(request, allowedOrigins);
           const body = await jsonBody(request, editorEnrichRequest);
           if (!dependencies.articleReader) throw new SifteraError("CONNECTOR_UNAVAILABLE");
           const reads: ArticleRead[] = [];
           // Sequential DB reservations avoid concurrent tenant epoch conflicts.
           for (const id of body.candidateIds) reads.push(await service.readOriginal(editorPrincipal, body.runId, id, dependencies.articleReader));
-          return response({ reads });
+          return withCors(response({ reads }));
         }
         if (request.method === "POST" && segments[1] === "import" && segments.length === 2) {
-          assertMutation(request);
+          assertMutation(request, allowedOrigins);
           const body = await jsonBody(request, editorImportRequest);
           const batches = body.submissions ?? [body.submission!];
           const runId = batches[0]!.runId;
@@ -484,16 +564,16 @@ export function createPrototypeApi(dependencies: PrototypeApiDependencies) {
               if (!prior || prior.payloadHash !== await hash(batch)) throw new SifteraError("IDEMPOTENCY_CONFLICT");
             } else await service.submit(editorPrincipal, batch);
           }
-          return response(await service.publish(editorPrincipal, runId, body.operationId, body.orderedCandidateIds));
+          return withCors(response(await service.publish(editorPrincipal, runId, body.operationId, body.orderedCandidateIds)));
         }
         if (request.method === "POST" && segments[1] === "abort" && segments.length === 2) {
-          assertMutation(request);
+          assertMutation(request, allowedOrigins);
           const body = await jsonBody(request, editorAbortRequest);
-          return response(await service.abort(editorPrincipal, body.runId));
+          return withCors(response(await service.abort(editorPrincipal, body.runId)));
         }
       }
-      return apiError("NOT_FOUND", "Unknown endpoint.", 404);
-    } catch (error) { return requestError(error); }
+      return withCors(apiError("NOT_FOUND", "Unknown endpoint.", 404));
+    } catch (error) { return withCors(requestError(error)); }
   };
 }
 
