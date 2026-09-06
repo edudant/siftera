@@ -133,6 +133,8 @@ export interface IngestInput {
   publishedAt?: string | null;
   categories?: string[];
   medium?: Candidate["medium"];
+  image?: Candidate["image"];
+  media?: Candidate["media"];
   access?: Candidate["access"];
 }
 export interface IngestResult {
@@ -248,8 +250,8 @@ export class EditorialService {
           excerpt: input.excerpt ?? "",
           medium: input.medium ?? "text",
           categories: input.categories ?? [],
-          image: null,
-          media: null,
+          image: input.image ?? null,
+          media: input.media ?? null,
           access: input.access ?? (body ? "full" : "unavailable"),
           contentHash,
           contentRef: contentHash ? contentKey(id, 1) : null,
@@ -314,8 +316,11 @@ export class EditorialService {
           current.access = input.access ?? "full";
           await tx.putCandidate({ candidate: current, sourcePayload: oldPayload });
         }
-        else if (sourceAssociationChanged)
+        // Chybějící obrázek doplníme i bez revize; jde o metadata, ne o změnu obsahu, a zápis skončí, jakmile obrázek je.
+        else if (sourceAssociationChanged || (!current.image && input.image)) {
+          if (!current.image && input.image) current.image = input.image;
           await tx.putCandidate({ candidate: current, sourcePayload: oldPayload });
+        }
         return {
           candidate: current,
           created: false,
@@ -340,6 +345,8 @@ export class EditorialService {
         publishedAt: input.publishedAt ?? null,
         categories: input.categories ?? [],
         medium: input.medium ?? "text",
+        image: input.image ?? current.image,
+        media: input.media ?? current.media,
         access: input.access ?? (body ? "full" : "unavailable"),
         contentHash: content?.contentHash ?? null,
         contentRef: content ? contentKey(existingId, revision) : null,
@@ -742,6 +749,15 @@ export class EditorialService {
         run: draft?.run ?? null,
         items: draft ? await this.itemsForRun(tx, draft.run) : [],
       };
+    });
+  }
+  /** Candidates still eligible for the next editorial run. */
+  async pendingCandidates(principal: Principal): Promise<Candidate[]> {
+    this.assertHistoryAccess(principal);
+    return this.repository.read(principal.uid, async (tx) => {
+      const now = this.clock.now();
+      const preference = (await tx.getPreferences()) ?? defaultPreferences(now);
+      return this.prefilter(tx, preference, now);
     });
   }
   async libraryFeed(principal: Principal): Promise<FeedItem[]> {

@@ -240,19 +240,19 @@ export function createPrototypeApi(dependencies: PrototypeApiDependencies) {
 
     try {
       if (request.method === "GET" && segments.join("/") === "bootstrap") {
-        const [preferences, feed, library, sources, inbox] = await Promise.all([
+        const [preferences, feed, library, sources, pending] = await Promise.all([
           service.getPreferences(principal),
           service.latestFeed(principal),
           service.libraryFeed(principal),
           auxStore.listSources(principal.uid),
-          repository.read(principal.uid, async (tx) => {
-            const records = await tx.listCandidates(300);
-            return Promise.all(records.map(async ({ candidate }) => ({
-              candidate,
-              state: (await tx.getState(candidate.id)) ?? initialState(candidate),
-            })));
-          }),
+          service.pendingCandidates(principal),
         ]);
+        const inbox = await repository.read(principal.uid, async (tx) =>
+          Promise.all(pending.map(async (candidate) => ({
+            candidate,
+            state: (await tx.getState(candidate.id)) ?? initialState(candidate),
+          }))),
+        );
         return response({ user: { id: principal.uid, email: resolved.email }, preferences, feed, library, inbox, sources: sources.map(publicSource), plugins: [{ id: "rss", label: "RSS / Atom" }, { id: "manual", label: "Manual article" }] });
       }
 
