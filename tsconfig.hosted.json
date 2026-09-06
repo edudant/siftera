@@ -1,0 +1,5 @@
+{
+  "extends":"./tsconfig.base.json",
+  "compilerOptions":{"noEmit":true},
+  "include":["apps/hosted/**/*.ts","db/**/*.ts","vite.hosted.config.ts","drizzle.config.ts"]
+}

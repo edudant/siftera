@@ -1,0 +1,11 @@
+.full-text {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.full-text input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}

@@ -1,0 +1,254 @@
+{
+  "schemaVersion": 1,
+  "invalidSubmissions": [
+    {
+      "name": "reject-client-user-id",
+      "input": {
+        "schemaVersion": 1,
+        "runId": "run_demo",
+        "batchId": "batch_demo",
+        "editor": {
+          "client": "manual-fixture",
+          "model": null,
+          "promptVersion": "editor-v1"
+        },
+        "items": [
+          {
+            "candidate": {
+              "candidateId": "candidate_heat",
+              "revision": 1
+            },
+            "relatedCandidates": [],
+            "presentation": "distilled_fact",
+            "headline": "Krátké intenzivní větrání",
+            "summary": "",
+            "topics": [
+              "domacnost",
+              "energie"
+            ],
+            "assessment": {
+              "relevance": 72,
+              "quality": "thin",
+              "novelty": "new",
+              "basis": "full_text"
+            },
+            "whyIncluded": "Praktický tip z tvých zdrojů, který stačí přečíst tady.",
+            "openOriginal": false,
+            "distilledText": "Podle článku krátké intenzivní větrání omezuje ochlazování stěn oproti dlouhému větrání na ventilačku.",
+            "evidenceQuote": "Krátké intenzivní větrání omezuje ochlazování stěn.",
+            "schoolDetails": []
+          }
+        ],
+        "rejected": [],
+        "userId": "other-user"
+      }
+    },
+    {
+      "name": "reject-score-over-100",
+      "input": {
+        "schemaVersion": 1,
+        "runId": "run_demo",
+        "batchId": "batch_demo",
+        "editor": {
+          "client": "manual-fixture",
+          "model": null,
+          "promptVersion": "editor-v1"
+        },
+        "items": [
+          {
+            "candidate": {
+              "candidateId": "candidate_heat",
+              "revision": 1
+            },
+            "relatedCandidates": [],
+            "presentation": "distilled_fact",
+            "headline": "Krátké intenzivní větrání",
+            "summary": "",
+            "topics": [
+              "domacnost",
+              "energie"
+            ],
+            "assessment": {
+              "relevance": 101,
+              "quality": "thin",
+              "novelty": "new",
+              "basis": "full_text"
+            },
+            "whyIncluded": "Praktický tip z tvých zdrojů, který stačí přečíst tady.",
+            "openOriginal": false,
+            "distilledText": "Podle článku krátké intenzivní větrání omezuje ochlazování stěn oproti dlouhému větrání na ventilačku.",
+            "evidenceQuote": "Krátké intenzivní větrání omezuje ochlazování stěn.",
+            "schoolDetails": []
+          }
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "name": "reject-distilled-without-evidence",
+      "input": {
+        "schemaVersion": 1,
+        "runId": "run_demo",
+        "batchId": "batch_demo",
+        "editor": {
+          "client": "manual-fixture",
+          "model": null,
+          "promptVersion": "editor-v1"
+        },
+        "items": [
+          {
+            "candidate": {
+              "candidateId": "candidate_heat",
+              "revision": 1
+            },
+            "relatedCandidates": [],
+            "presentation": "distilled_fact",
+            "headline": "Krátké intenzivní větrání",
+            "summary": "",
+            "topics": [
+              "domacnost",
+              "energie"
+            ],
+            "assessment": {
+              "relevance": 72,
+              "quality": "thin",
+              "novelty": "new",
+              "basis": "full_text"
+            },
+            "whyIncluded": "Praktický tip z tvých zdrojů, který stačí přečíst tady.",
+            "openOriginal": false,
+            "distilledText": "Podle článku krátké intenzivní větrání omezuje ochlazování stěn oproti dlouhému větrání na ventilačku.",
+            "evidenceQuote": null,
+            "schoolDetails": []
+          }
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "name": "reject-distilled-from-metadata",
+      "input": {
+        "schemaVersion": 1,
+        "runId": "run_demo",
+        "batchId": "batch_demo",
+        "editor": {
+          "client": "manual-fixture",
+          "model": null,
+          "promptVersion": "editor-v1"
+        },
+        "items": [
+          {
+            "candidate": {
+              "candidateId": "candidate_heat",
+              "revision": 1
+            },
+            "relatedCandidates": [],
+            "presentation": "distilled_fact",
+            "headline": "Krátké intenzivní větrání",
+            "summary": "",
+            "topics": [
+              "domacnost",
+              "energie"
+            ],
+            "assessment": {
+              "relevance": 72,
+              "quality": "thin",
+              "novelty": "new",
+              "basis": "metadata"
+            },
+            "whyIncluded": "Praktický tip z tvých zdrojů, který stačí přečíst tady.",
+            "openOriginal": false,
+            "distilledText": "Podle článku krátké intenzivní větrání omezuje ochlazování stěn oproti dlouhému větrání na ventilačku.",
+            "evidenceQuote": "Krátké intenzivní větrání omezuje ochlazování stěn.",
+            "schoolDetails": []
+          }
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "name": "reject-arbitrary-url",
+      "input": {
+        "schemaVersion": 1,
+        "runId": "run_demo",
+        "batchId": "batch_demo",
+        "editor": {
+          "client": "manual-fixture",
+          "model": null,
+          "promptVersion": "editor-v1"
+        },
+        "items": [
+          {
+            "candidate": {
+              "candidateId": "candidate_heat",
+              "revision": 1
+            },
+            "relatedCandidates": [],
+            "presentation": "distilled_fact",
+            "headline": "Krátké intenzivní větrání",
+            "summary": "",
+            "topics": [
+              "domacnost",
+              "energie"
+            ],
+            "assessment": {
+              "relevance": 72,
+              "quality": "thin",
+              "novelty": "new",
+              "basis": "full_text"
+            },
+            "whyIncluded": "Praktický tip z tvých zdrojů, který stačí přečíst tady.",
+            "openOriginal": false,
+            "distilledText": "Podle článku krátké intenzivní větrání omezuje ochlazování stěn oproti dlouhému větrání na ventilačku.",
+            "evidenceQuote": "Krátké intenzivní větrání omezuje ochlazování stěn.",
+            "schoolDetails": [],
+            "url": "https://example.org/injected"
+          }
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "name": "reject-unknown-top-level",
+      "input": {
+        "schemaVersion": 1,
+        "runId": "run_demo",
+        "batchId": "batch_demo",
+        "editor": {
+          "client": "manual-fixture",
+          "model": null,
+          "promptVersion": "editor-v1"
+        },
+        "items": [
+          {
+            "candidate": {
+              "candidateId": "candidate_heat",
+              "revision": 1
+            },
+            "relatedCandidates": [],
+            "presentation": "distilled_fact",
+            "headline": "Krátké intenzivní větrání",
+            "summary": "",
+            "topics": [
+              "domacnost",
+              "energie"
+            ],
+            "assessment": {
+              "relevance": 72,
+              "quality": "thin",
+              "novelty": "new",
+              "basis": "full_text"
+            },
+            "whyIncluded": "Praktický tip z tvých zdrojů, který stačí přečíst tady.",
+            "openOriginal": false,
+            "distilledText": "Podle článku krátké intenzivní větrání omezuje ochlazování stěn oproti dlouhému větrání na ventilačku.",
+            "evidenceQuote": "Krátké intenzivní větrání omezuje ochlazování stěn.",
+            "schoolDetails": []
+          }
+        ],
+        "rejected": [],
+        "execute": "shell"
+      }
+    }
+  ]
+}

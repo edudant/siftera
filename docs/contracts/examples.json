@@ -1,0 +1,141 @@
+{
+  "note": "Syntetická fixture, nikoli reálné tvrzení ověřené Sifterou.",
+  "preferences": {
+    "version": 1,
+    "instructions": "Chci kvalitní technologie a AI, ale ne každý release. Pravidelně historii a vědu, každý den něco překvapivého.",
+    "language": "cs",
+    "timezone": "Europe/Prague",
+    "preferredTopics": [
+      "ai",
+      "historie",
+      "veda"
+    ],
+    "avoidTopics": [],
+    "desiredTopicMix": [
+      {
+        "topic": "technologie",
+        "weight": 3
+      },
+      {
+        "topic": "veda",
+        "weight": 2
+      },
+      {
+        "topic": "historie",
+        "weight": 1
+      }
+    ],
+    "maxPerTopic": 8,
+    "maxPerSource": 5,
+    "discoveryFraction": 0.2,
+    "longReadTarget": 2,
+    "entertainmentFraction": 0.15,
+    "targetItems": 25,
+    "candidateLimit": 80,
+    "contentReadLimit": 40,
+    "maxCandidateAgeDays": 7,
+    "includeRead": false,
+    "behaviorEnabled": false,
+    "updatedAt": "2026-09-06T06:00:00Z"
+  },
+  "submission": {
+    "schemaVersion": 1,
+    "runId": "run_demo",
+    "batchId": "batch_demo",
+    "editor": {
+      "client": "manual-fixture",
+      "model": null,
+      "promptVersion": "editor-v1"
+    },
+    "items": [
+      {
+        "candidate": {
+          "candidateId": "candidate_heat",
+          "revision": 1
+        },
+        "relatedCandidates": [],
+        "presentation": "distilled_fact",
+        "headline": "Krátké intenzivní větrání",
+        "summary": "",
+        "topics": [
+          "domacnost",
+          "energie"
+        ],
+        "assessment": {
+          "relevance": 72,
+          "quality": "thin",
+          "novelty": "new",
+          "basis": "full_text"
+        },
+        "whyIncluded": "Praktický tip z tvých zdrojů, který stačí přečíst tady.",
+        "openOriginal": false,
+        "distilledText": "Podle článku krátké intenzivní větrání omezuje ochlazování stěn oproti dlouhému větrání na ventilačku.",
+        "evidenceQuote": "Krátké intenzivní větrání omezuje ochlazování stěn.",
+        "schoolDetails": []
+      }
+    ],
+    "rejected": []
+  },
+  "feedItem": {
+    "entry": {
+      "editorialItemId": "run_demo_candidate_heat",
+      "candidateId": "candidate_heat",
+      "rank": 0
+    },
+    "item": {
+      "candidate": {
+        "candidateId": "candidate_heat",
+        "revision": 1
+      },
+      "relatedCandidates": [],
+      "presentation": "distilled_fact",
+      "headline": "Krátké intenzivní větrání",
+      "summary": "",
+      "topics": [
+        "domacnost",
+        "energie"
+      ],
+      "assessment": {
+        "relevance": 72,
+        "quality": "thin",
+        "novelty": "new",
+        "basis": "full_text"
+      },
+      "whyIncluded": "Praktický tip z tvých zdrojů, který stačí přečíst tady.",
+      "openOriginal": false,
+      "distilledText": "Podle článku krátké intenzivní větrání omezuje ochlazování stěn oproti dlouhému větrání na ventilačku.",
+      "evidenceQuote": "Krátké intenzivní větrání omezuje ochlazování stěn.",
+      "schoolDetails": [],
+      "id": "run_demo_candidate_heat",
+      "runId": "run_demo",
+      "producer": "agent",
+      "provenance": [
+        {
+          "candidateId": "candidate_heat",
+          "revision": 1,
+          "sourceId": "source_example",
+          "sourceName": "Ukázkový zdroj",
+          "canonicalUrl": "https://example.org/ventilation",
+          "title": "Jak větrat",
+          "publishedAt": "2026-09-05T08:00:00Z",
+          "access": "full",
+          "contentHash": "fixture-content-hash"
+        }
+      ],
+      "medium": "text",
+      "image": null,
+      "media": null,
+      "readingMinutes": 1,
+      "createdAt": "2026-09-06T06:05:00Z"
+    },
+    "state": {
+      "candidateId": "candidate_heat",
+      "read": false,
+      "saved": false,
+      "hidden": false,
+      "version": 0,
+      "updatedAt": "2026-09-06T06:05:00Z"
+    },
+    "groups": []
+  }
+}

@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+coverage/
+.vite/
+.env
+.env.*
+!.env.example
+*.local
+/.local/
+/.firebase/
+*-debug.log
+/.wrangler/

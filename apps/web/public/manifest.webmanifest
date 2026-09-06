@@ -1,0 +1,1 @@
+{"name":"Siftera","short_name":"Siftera","description":"Osobní výběr z vlastních zdrojů.","start_url":"/","display":"standalone","background_color":"#f4f5f8","theme_color":"#254dcc","icons":[{"src":"/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}],"share_target":{"action":"/","method":"GET","params":{"title":"title","text":"text","url":"url"}}}

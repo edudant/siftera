@@ -1,0 +1,68 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "candidates",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "data.candidate.discoveredAt", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "sources",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "data.enabled", "order": "ASCENDING" },
+        { "fieldPath": "data.nextFetchAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "feedRuns",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "data.status", "order": "ASCENDING" },
+        { "fieldPath": "data.publishedAt", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "libraryItems",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "data.sortDate", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "libraryItems",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "data.relevance", "order": "DESCENDING" },
+        { "fieldPath": "data.sortDate", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "itemStates",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "data.saved", "order": "ASCENDING" },
+        { "fieldPath": "data.updatedAt", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "feedback",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "data.feedback.createdAt", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": [
+    { "collectionGroup": "candidates", "fieldPath": "data.candidate.excerpt", "indexes": [] },
+    { "collectionGroup": "editorialItems", "fieldPath": "data.proposal.summary", "indexes": [] },
+    { "collectionGroup": "preferences", "fieldPath": "data.instructions", "indexes": [] }
+  ]
+}

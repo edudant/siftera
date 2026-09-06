@@ -1,0 +1,18 @@
+{
+  "name": "@siftera/connectors",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@siftera/core": "workspace:*",
+    "@siftera/shared": "workspace:*",
+    "fast-xml-parser": "^5.11.1"
+  }
+}
