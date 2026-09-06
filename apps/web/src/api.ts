@@ -60,19 +60,20 @@ export class ApiError extends Error {
 }
 
 const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
+export const DEMO_MODE = import.meta.env.VITE_DEMO === "1";
 const TOKEN_KEY = "siftera:token";
 /** Token vlastníka pro cross-origin API. Drží se v prohlížeči; server ho zná jako secret. */
 export function readToken(): string { try { return localStorage.getItem(TOKEN_KEY) ?? ""; } catch { return ""; } }
 export function writeToken(value: string): void {
   try { if (value) localStorage.setItem(TOKEN_KEY, value); else localStorage.removeItem(TOKEN_KEY); } catch { /* soukromý režim */ }
 }
-export const NEEDS_TOKEN = baseUrl !== "";
+export const NEEDS_TOKEN = !DEMO_MODE;
 const apiRoot = `${baseUrl.replace(/\/$/, "")}/api/v1`;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set("Accept", "application/json");
-  const token = NEEDS_TOKEN ? readToken() : "";
+  const token = DEMO_MODE ? "" : readToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
   if (init?.body) headers.set("Content-Type", "application/json");
   const response = await fetch(`${apiRoot}${path}`, {
@@ -89,7 +90,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 /** Na GitHub Pages není backend; adaptér se vybírá při buildu, volající kód zůstává stejný (ADR-018). */
-export const DEMO_MODE = import.meta.env.VITE_DEMO === "1";
 
 const httpApi = {
   bootstrap: () => request<Bootstrap>("/bootstrap"),

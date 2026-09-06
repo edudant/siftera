@@ -32,7 +32,7 @@ function ago(value: string | null): string {
   return new Intl.DateTimeFormat("cs-CZ", { day: "numeric", month: "numeric" }).format(new Date(value));
 }
 const folded = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("cs");
-const message = (reason: unknown) => reason instanceof ApiError && reason.status === 401 ? (NEEDS_TOKEN ? "Chybí nebo neplatí token. Vlož ho v Nastavení." : "Pro pokračování se přihlaste.") : reason instanceof Error ? reason.message : "Něco se nepovedlo.";
+const message = (reason: unknown) => reason instanceof ApiError && reason.status === 401 ? "Chybí nebo neplatí token. Vlož ho v Nastavení." : reason instanceof Error ? reason.message : "Něco se nepovedlo.";
 /** „1 položka čeká“, „3 položky čekají“, „12 položek čeká“. */
 const waitingLabel = (count: number) => count === 1 ? "1 položka čeká na redakční zpracování" : count < 5 ? `${count} položky čekají na redakční zpracování` : `${count} položek čeká na redakční zpracování`;
 const pending = (data: Bootstrap | null) => data?.inbox ?? [];
@@ -205,7 +205,7 @@ export default function App() {
   </header><main>
     {shared && <ShareBox value={shared} update={setShared} accept={() => void acceptShare()} dismiss={() => { setShared(null); history.replaceState({}, "", location.pathname); }} />}
     {notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice(null)} aria-label="Zavřít">×</button></div>}
-    {error && <div className="error" role="alert">{error}{error === "Pro pokračování se přihlaste." ? <a href="/signin-with-chatgpt?return_to=/">Přihlásit se</a> : <button onClick={() => void reload()}>Načíst znovu</button>}</div>}
+    {error && <div className="error" role="alert">{error}{error.includes("token") ? <button onClick={() => setTab("settings")}>Otevřít nastavení</button> : <button onClick={() => void reload()}>Načíst znovu</button>}</div>}
     {query ? <Page title={`„${query}“`} eyebrow="HLEDÁNÍ V NAČTENÝCH DATECH"><p className="hint">Prohledává se aktuálně načtený výběr a knihovna. Starší archiv se nepředstírá.</p><Cards items={results} onState={changeState} onOpen={openOriginal} modes={modes} names={names} empty={<Empty title="Nic jsme nenašli." detail="Hledá se jen ve vydaném výběru a knihovně, ne v čekajících položkách Inboxu." />} /></Page> : <Content tab={tab} data={data} loading={loading} setTab={setTab} reload={reload} notice={setNotice} onState={changeState} onHide={hideCandidate} onOpen={openOriginal} modes={modes} names={names} filter={filter} setFilter={setFilter} panel={panel} setPanel={setPanel} />}
   </main></div>;
 }

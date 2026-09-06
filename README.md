@@ -23,6 +23,10 @@ pnpm build:pages      # výstup v dist/pages
 
 Ukázka čte sanitizovaný snapshot `apps/web/public/demo-feed.json` — jen veřejná článková metadata a krátké redakční výstupy, žádné identity ani plná těla článků. Čtení, ukládání a ruční vstupy se drží pouze v prohlížeči konkrétního návštěvníka. Sběr z RSS a redakční export/import backend potřebují a ukázka to říká otevřeně místo tichého selhání; Pages neumí obejít CORS ani hostovat Worker. Nasazení obstará workflow `.github/workflows/pages.yml` po pushi do hlavní větve.
 
+### Produkce
+
+Ostrá instance běží na <https://siftera-api.jiri-bubnik.workers.dev> — Worker servíruje API i vlastní kopii UI, takže se volá same-origin a nepotřebuje CORS. Přístup je na token vlastníka; vloží se v aplikaci pod Nastavení → Přístup k API. Sběr z RSS a redakce běží lokálně přes `pnpm ingest:once` a redakční export/import proti té adrese.
+
 ### Produkční nasazení Workeru
 
 Worker je API; RSS ani AI na něm neběží. Sběr obstará lokální proces, Worker jen validuje, dedupuje a zapisuje do D1/R2:
