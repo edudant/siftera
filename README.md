@@ -12,6 +12,8 @@ V aplikaci přidej RSS/Atom zdroj nebo odkaz/text do Inboxu. Celý vložený tex
 
 ## Veřejná ukázka na GitHub Pages
 
+Běží na <https://edudant.github.io/siftera/>.
+
 Statické UI s ukázkovým feedem se staví bez backendu (ADR-018):
 
 ```sh
