@@ -14,11 +14,20 @@ Vizuální jazyk platí pro celou aplikaci, ne jen pro Dnes. Knihovna, Uložené
 
 ## Karty
 
-Všechny renderery dostávají `FeedItem`. Společné prvky: zdroj, datum, headline, uložit, stav přečteno, menu feedback/provenance. Zdroj i datum čitelné, nikoli přes celé obrázky s nízkým kontrastem.
+Všechny renderery dostávají `FeedItem`. Společné prvky: zdroj, datum, headline, uložit, stav přečteno, skrýt. Zdroj i datum čitelné, nikoli přes celé obrázky s nízkým kontrastem.
+
+Feed není jedna karta opakovaná dokola. Důraz určuje `emphasis` od AI editora; chybí-li, odvodí se z prezentace a hodnocení. Zdroj ho může omezit přes `imageMode`, a obraz menší než 480px se nikdy neroztahuje přes celou šířku — degraduje na náhled.
+
+| Důraz | Podoba |
+|---|---|
+| lead | obraz3:2 přes celou šířku, největší nadpis; nosná položka vydání |
+| standard | obraz16:9 přes celou šířku, nadpis a perex |
+| compact | náhled96×96 vedle textu, menší nadpis, perex na tři řádky |
+| text | bez obrazu, velký nadpis nese pozornost sám |
 
 | Presentation | Obsah a hlavní akce |
 |---|---|
-| article | obraz16:9 přes celou šířku, pod ním akce, nadpis a perex; bez obrázku typografický fallback |
+| article | důraz podle `emphasis`; bez obrázku typografická karta |
 | long_read | větší nadpis, delší perex, odhad času, viditelné „Stojí za přečtení“ |
 | distilled_fact | velký krátký text, decentní téma, dole malý dohledatelný zdroj; žádné „klikni pro pointu“ |
 | school_notice | datum oznámení, text, případné rozlišené úkol/test/učivo, jasně odlišit tip AI |
@@ -28,19 +37,19 @@ Všechny renderery dostávají `FeedItem`. Společné prvky: zdroj, datum, headl
 
 Media a platforma jsou samostatné od prezentace a témat. YouTube external ID validovat, nikdy nevkládat raw iframe HTML z ingestu/AI. Jedno přehrávané video současně, žádný autoplay při scrollování, nevytvářet player pro všechny položky předem.
 
-## Detail, čtení a feedback
+## Otevření položky, čtení a feedback
 
-Tap kdekoli na kartě otevře celoobrazovkový detail uvnitř aplikace: obraz, headline, redakční shrnutí, perex od zdroje, témata a původ. Detail je vlastní vrstva nad feedem, ne nová stránka — otevření i zavření zachová přesnou pozici feedu a nepřenačítá data. Zavřít lze tlačítkem i gestem zpět; gesto nikdy není jediná cesta.
+Tap kdekoli na kartě otevře originál na webu zdroje, ve stejné kartě. Vlastní detail se neukazuje: dokud ingest neuloží plný text, neobsahoval by nic, co už není na kartě, a byl by to jen krok navíc (ADR-014). Návrat je tlačítko zpět, ne zavírání karet, a musí vrátit čtenáře přesně tam, kde skončil — pozice ve feedu i otevřená záložka se proto ukládají před odchodem a obnovují až na vykreslený feed, ne dřív.
 
-Vestavěný prohlížeč cizího webu není součástí produktu a nebude se předstírat: zpravodajské weby zakazují vkládání do rámu (ADR-014). Dokud ingest neuloží plný text, detail nabízí odchod na originál jako poslední krok, jasně označený jako opuštění Siftery, s `noopener`/`noreferrer`. Jakmile je k dispozici `access: full`, detail zobrazí uložený plain text bezpečně formátovaný bez zdrojového HTML a odkaz ustoupí do pozadí.
+Vestavěný prohlížeč cizí stránky uvnitř rozhraní není dosažitelný a nebude se předstírat; zpravodajské weby vkládání do rámu zakazují. Až bude k dispozici `access: full`, položka se otevře do vlastního čtení s uloženým plain textem bezpečně formátovaným bez zdrojového HTML.
 
-Stav read je samostatný: otevření detailu nebo originálu označí read, pouhé projetí karty scrollováním ne. U distilled_fact a school_notice je viditelná malá akce „Přečteno“, protože není nutné otevírat detail. Lze vrátit na unread. Přečtená karta se během aktivního scrollu jen ztlumí, nezmizí a nepřeskládá okolí; filtr se znovu uplatní při explicitním refresh/navigaci.
+Stav read je samostatný: otevření originálu označí read, pouhé projetí karty scrollováním ne. U distilled_fact a school_notice je viditelná malá akce „Přečteno“, protože není nutné nikam odcházet. Lze vrátit na unread. Přečtená karta se během aktivního scrollu jen ztlumí, nezmizí a nepřeskládá okolí; filtr se znovu uplatní při explicitním refresh/navigaci.
 
-Akce na kartě jsou tři a jsou to stavové přepínače vlastního prostoru, ne signály pro ostatní: přečteno, uložit, skrýt. Skryté položky musí jít znovu zobrazit — jednosměrné skrytí bez cesty zpět není přijatelné.
+Akce na kartě jsou tři a jsou to stavové přepínače vlastního prostoru, ne signály pro ostatní: přečteno, uložit, skrýt. Skryté položky musí jít znovu zobrazit a vrátit mezi čekající — jednosměrné skrytí bez cesty zpět není přijatelné.
 
 Menu: „Více podobného“, „Jsem rád, že jsem to viděl“, „Méně podobného“, „Dobrý objev“, „Skrýt“, „Proč to vidím / Zdroj“. More/less dovoluje volitelně upřesnit položku/téma/zdroj v druhém kroku, ale výchozí akce bez povinného dialogu target=item. Volný komentář≤500 znaků zůstává soukromou poznámkou pro vlastní AI editor; nikde se nezveřejňuje. Save/read/hide jsou stavové přepínače a nekladou otázku na preference.
 
-Provenance detail: zdrojový titulek, URL, datum, „AI shrnutí“, basis „celý dostupný text / výňatek / pouze metadata“, případně „Plný text nedostupný“. Hodnoticí čísla schovat do detailu; nevytvářet vizuální dojem ověřené pravdy.
+Provenance: zdroj, datum, „AI shrnutí“ a basis „celý dostupný text / výňatek / pouze metadata“ patří ke kartě. Hodnoticí čísla zůstávají skrytá; nevytvářet vizuální dojem ověřené pravdy.
 
 ## Vydání a historie
 

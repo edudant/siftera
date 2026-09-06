@@ -206,6 +206,15 @@
           "minLength": 1,
           "maxLength": 240
         },
+        "emphasis": {
+          "enum": [
+            "lead",
+            "standard",
+            "compact",
+            "text"
+          ],
+          "description": "Jak výrazně se položka ukáže ve feedu. Volitelné; bez ní si klient odvodí důraz z prezentace a hodnocení."
+        },
         "openOriginal": {
           "type": "boolean"
         },

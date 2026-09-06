@@ -45,6 +45,8 @@ export const presentationSchema = z.enum([
   "short_fun",
 ]);
 export const accessSchema = z.enum(["full", "partial", "unavailable"]);
+/** Jak výrazně se položka ukáže ve feedu. Rozhoduje editor, protože zná obsah i to, zda obraz něco přidává. */
+export const emphasisSchema = z.enum(["lead", "standard", "compact", "text"]);
 export const candidateRefSchema = z
   .object({ candidateId: idSchema, revision: z.number().int().min(1) })
   .strict();
@@ -225,6 +227,7 @@ const editorialProposalObject = z
       .refine((xs) => new Set(xs).size === xs.length, "must be unique"),
     assessment: assessmentSchema,
     whyIncluded: z.string().min(1).max(240),
+    emphasis: emphasisSchema.optional(),
     openOriginal: z.boolean(),
     distilledText: z.string().min(1).max(500).nullable(),
     evidenceQuote: z.string().min(1).max(500).nullable(),
@@ -443,6 +446,7 @@ export type UserItemState = z.infer<typeof itemStateSchema>;
 export type FeedRun = z.infer<typeof feedRunSchema>;
 export type FeedEntry = z.infer<typeof feedEntrySchema>;
 export type Presentation = z.infer<typeof presentationSchema>;
+export type Emphasis = z.infer<typeof emphasisSchema>;
 export type Provenance = z.infer<typeof provenanceSchema>;
 export type EditorialItem = z.infer<typeof editorialItemSchema>;
 export type FeedItem = z.infer<typeof feedItemSchema>;

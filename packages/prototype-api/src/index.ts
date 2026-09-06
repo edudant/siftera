@@ -35,6 +35,7 @@ const sourceSchema = z
     pluginId: z.literal("rss"),
     groups: z.array(groupSchema).max(10),
     deliveryMode: z.enum(["curated", "all"]),
+    imageMode: z.enum(["auto", "large", "small", "none"]).default("auto"),
     enabled: z.boolean(),
     createdAt: z.string().datetime({ offset: true }),
     lastFetchedAt: z.string().datetime({ offset: true }).nullable(),
@@ -71,6 +72,7 @@ export interface PrototypeConnectorRegistry {
       sourceName: string;
       groups?: string[];
       deliveryMode?: "curated" | "all";
+      imageMode?: "auto" | "large" | "small" | "none";
       url: string;
       title?: string;
       text?: string;
@@ -90,8 +92,8 @@ export interface PrototypeApiDependencies {
 }
 
 const now = () => new Date().toISOString();
-const publicSource = ({ id, name, url, pluginId, groups, deliveryMode, enabled, createdAt, lastFetchedAt, lastError }: PrototypeSource) =>
-  ({ id, name, url, pluginId, groups, deliveryMode, enabled, createdAt, lastFetchedAt, lastError });
+const publicSource = ({ id, name, url, pluginId, groups, deliveryMode, imageMode, enabled, createdAt, lastFetchedAt, lastError }: PrototypeSource) =>
+  ({ id, name, url, pluginId, groups, deliveryMode, imageMode, enabled, createdAt, lastFetchedAt, lastError });
 const systemFor = (principal: Principal): Principal => ({
   uid: principal.uid,
   kind: "system",
@@ -201,8 +203,8 @@ function normalizeGroup(value: string): string {
   return slug === "skola" ? "school" : slug;
 }
 const sourceGroupInputSchema = z.string().max(200).transform(normalizeGroup).pipe(groupSchema);
-const sourceCreateRequest = z.object({ name: z.string().trim().min(1).max(200), url: z.string().trim().url().max(2048), pluginId: z.literal("rss"), groups: z.array(sourceGroupInputSchema).max(10).optional(), deliveryMode: z.enum(["curated", "all"]).optional() }).strict();
-const sourcePatchRequest = z.object({ enabled: z.boolean().optional(), name: z.string().trim().min(1).max(200).optional() }).strict().refine((value) => Object.keys(value).length > 0);
+const sourceCreateRequest = z.object({ name: z.string().trim().min(1).max(200), url: z.string().trim().url().max(2048), pluginId: z.literal("rss"), groups: z.array(sourceGroupInputSchema).max(10).optional(), deliveryMode: z.enum(["curated", "all"]).optional(), imageMode: z.enum(["auto", "large", "small", "none"]).optional() }).strict();
+const sourcePatchRequest = z.object({ enabled: z.boolean().optional(), name: z.string().trim().min(1).max(200).optional(), imageMode: z.enum(["auto", "large", "small", "none"]).optional() }).strict().refine((value) => Object.keys(value).length > 0);
 const preferenceRequest = z.object({ preferences: preferenceSchema, expectedVersion: z.number().int().min(1) }).strict();
 const stateRequest = z.object({ patch: z.object({ read: z.boolean().optional(), saved: z.boolean().optional(), hidden: z.boolean().optional() }).strict().refine((value) => Object.keys(value).length > 0), expectedVersion: z.number().int().nonnegative(), operationId: idSchema }).strict();
 const editorExportRequest = z.object({ operationId: idSchema }).strict();
@@ -247,13 +249,22 @@ export function createPrototypeApi(dependencies: PrototypeApiDependencies) {
           auxStore.listSources(principal.uid),
           service.pendingCandidates(principal),
         ]);
-        const inbox = await repository.read(principal.uid, async (tx) =>
-          Promise.all(pending.map(async (candidate) => ({
+        // Skryté kandidáty prefilter vypouští, ale UI je musí umět vrátit zpět (UX: skrytí není jednosměrné).
+        const [inbox, hidden] = await repository.read(principal.uid, async (tx) => {
+          const withState = async (candidate: Candidate) => ({
             candidate,
             state: (await tx.getState(candidate.id)) ?? initialState(candidate),
-          }))),
-        );
-        return response({ user: { id: principal.uid, email: resolved.email }, preferences, feed, library, inbox, sources: sources.map(publicSource), plugins: [{ id: "rss", label: "RSS / Atom" }, { id: "manual", label: "Manual article" }] });
+          });
+          const records = await tx.listCandidates(300);
+          const hiddenStates = await Promise.all(
+            records.map(async ({ candidate }) => {
+              const state = await tx.getState(candidate.id);
+              return state?.hidden ? { candidate, state } : null;
+            }),
+          );
+          return [await Promise.all(pending.map(withState)), hiddenStates.filter((entry) => entry !== null)] as const;
+        });
+        return response({ user: { id: principal.uid, email: resolved.email }, preferences, feed, library, inbox, hidden, sources: sources.map(publicSource), plugins: [{ id: "rss", label: "RSS / Atom" }, { id: "manual", label: "Manual article" }] });
       }
 
       if (request.method === "POST" && segments.join("/") === "articles") {
@@ -279,7 +290,7 @@ export function createPrototypeApi(dependencies: PrototypeApiDependencies) {
           if ((await auxStore.listSources(principal.uid)).length >= MAX_SOURCES)
             throw new SifteraError("SOURCE_LIMIT");
           const stamp = now();
-          const source = sourceSchema.parse({ id: createId(), name: body.name, url: canonicalizeUrl(body.url), pluginId: body.pluginId, groups: body.groups ?? [], deliveryMode: body.deliveryMode ?? "curated", enabled: true, createdAt: stamp, lastFetchedAt: null, lastError: null });
+          const source = sourceSchema.parse({ id: createId(), name: body.name, url: canonicalizeUrl(body.url), pluginId: body.pluginId, groups: body.groups ?? [], deliveryMode: body.deliveryMode ?? "curated", imageMode: body.imageMode ?? "auto", enabled: true, createdAt: stamp, lastFetchedAt: null, lastError: null });
           await auxStore.putSource(principal.uid, source);
           await syncSourceMetadata(principal.uid, source);
           return response(publicSource(source), 201);

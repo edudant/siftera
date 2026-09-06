@@ -9,6 +9,8 @@ import type {
   UserItemState,
 } from "@siftera/shared";
 
+export type ImageMode = "auto" | "large" | "small" | "none";
+
 export interface PrototypeSource {
   id: string;
   name: string;
@@ -16,6 +18,7 @@ export interface PrototypeSource {
   pluginId: string;
   groups: string[];
   deliveryMode: "curated" | "all";
+  imageMode?: ImageMode;
   enabled: boolean;
   createdAt: string;
   lastFetchedAt: string | null;
@@ -28,6 +31,7 @@ export interface Bootstrap {
   feed: { run: FeedRun | null; items: FeedItem[] };
   library: FeedItem[];
   inbox: Array<{ candidate: Candidate; state: UserItemState }>;
+  hidden: Array<{ candidate: Candidate; state: UserItemState }>;
   sources: PrototypeSource[];
   plugins: Array<{ id: string; label: string }>;
 }
@@ -74,8 +78,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   bootstrap: () => request<Bootstrap>("/bootstrap"),
   addArticle: (input: { url?: string; title?: string; text?: string; fullText?: boolean }) => request<{ candidate: Candidate }>("/articles", { method: "POST", body: JSON.stringify(input) }),
-  addSource: (input: { name: string; url: string; pluginId: "rss"; groups?: string[]; deliveryMode?: "curated" | "all" }) => request<PrototypeSource>("/sources", { method: "POST", body: JSON.stringify(input) }),
-  patchSource: (id: string, patch: { enabled?: boolean; name?: string }) => request<PrototypeSource>(`/sources/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  addSource: (input: { name: string; url: string; pluginId: "rss"; groups?: string[]; deliveryMode?: "curated" | "all"; imageMode?: ImageMode }) => request<PrototypeSource>("/sources", { method: "POST", body: JSON.stringify(input) }),
+  patchSource: (id: string, patch: { enabled?: boolean; name?: string; imageMode?: ImageMode }) => request<PrototypeSource>(`/sources/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteSource: (id: string) => request<void>(`/sources/${encodeURIComponent(id)}`, { method: "DELETE" }),
   refreshSource: (id: string) => request<RefreshResult>(`/sources/${encodeURIComponent(id)}/refresh`, { method: "POST", body: "{}" }),
   savePreferences: (preferences: PreferenceProfile) => request<PreferenceProfile>("/preferences", { method: "PUT", body: JSON.stringify({ preferences, expectedVersion: preferences.version }) }),

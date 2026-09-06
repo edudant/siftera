@@ -128,6 +128,24 @@ main { max-width: 680px; margin: auto; padding: 8px 0 32px }
   text-shadow: 0 1px 8px rgba(0, 0, 0, .3);
 }
 
+/* Kompaktní karta: náhled vpravo, text nese hlavní váhu. */
+.card.compact .row { display: flex; gap: 12px; align-items: flex-start; padding: 0 16px }
+.card.compact .body { min-width: 0; flex: 1 }
+.card.compact h2 { font-size: 18px; margin: 0 0 5px }
+.card.compact .lede { margin: 0; font-size: 14px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden }
+.shot.thumb { width: 96px; height: 96px; aspect-ratio: auto; flex: 0 0 auto; border-radius: 10px }
+/* Malý náhled mimo kompaktní řádek dostane vlastní odsazení, aby nelepil na kraj. */
+.card > .shot.thumb { margin: 0 16px 4px }
+.shot.failed { display: none }
+.shot.thumb.blank span { font-size: 11px; padding: 4px }
+/* Textová karta: bez obrazu, text sám nese pozornost. */
+.card.text h2 { font-size: 24px }
+.card.text .lede { font-size: 16px }
+/* Lead: nejvýraznější položka vydání. */
+.card.lead h2 { font-size: 26px }
+.card.lead .shot { aspect-ratio: 3/2 }
+.meta .kind { background: transparent; border: 1px solid var(--line); color: var(--faint); font-weight: 650 }
+
 .actions { display: flex; gap: 2px; padding: 8px 10px 2px }
 .actions button {
   width: 42px;
