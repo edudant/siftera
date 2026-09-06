@@ -127,8 +127,10 @@ function response(value: unknown, status = 200): Response {
     },
   });
 }
-function apiError(code: string, message: string, status: number): Response {
-  return response({ error: { code, message } }, status);
+type ValidationDetail = { field: string; reason: string };
+
+function apiError(code: string, message: string, status: number, details?: ValidationDetail[]): Response {
+  return response({ error: { code, message, ...(details?.length ? { details } : {}) } }, status);
 }
 function errorStatus(code: string): number {
   if (code === "UNAUTHENTICATED") return 401;
@@ -140,9 +142,20 @@ function errorStatus(code: string): number {
   if (code.startsWith("STALE_") || code === "IDEMPOTENCY_CONFLICT") return 409;
   return 400;
 }
+function validationDetails(error: z.ZodError): ValidationDetail[] {
+  return error.issues.slice(0, 10).map((issue) => {
+    const field = issue.path.map(String).join(".") || "body";
+    if (field === "url") return { field, reason: "Zadejte platnou adresu RSS nebo Atom zdroje včetně https://." };
+    if (field === "name") return { field, reason: "Zadejte název zdroje." };
+    if (field === "groups" || field.startsWith("groups.")) return { field, reason: "Skupina musí po úpravě obsahovat písmena nebo čísla." };
+    return { field, reason: "Zkontrolujte hodnotu tohoto pole." };
+  });
+}
 function requestError(error: unknown): Response {
-  if (error instanceof z.ZodError)
-    return apiError("INVALID_REQUEST", "Request body does not match the endpoint schema.", 400);
+  if (error instanceof z.ZodError) {
+    const details = validationDetails(error);
+    return apiError("INVALID_REQUEST", details[0]?.reason ?? "Zkontrolujte zadané údaje.", 400, details);
+  }
   if (error instanceof SifteraError)
     return apiError(error.code, error.message, errorStatus(error.code));
   return apiError("INTERNAL", "The request could not be completed.", 500);
@@ -176,8 +189,20 @@ function route(pathname: string): string[] | null {
   return pathname.slice(prefix.length).split("/").filter(Boolean).map(decodeURIComponent);
 }
 const articleRequest = z.object({ url: z.string().url().max(2048), title: z.string().min(1).max(500).optional(), text: z.string().max(200_000).optional(), fullText: z.boolean().optional().default(false) }).strict().refine((value) => !value.fullText || value.text !== undefined, { message: "fullText requires text", path: ["text"] });
-const sourceCreateRequest = z.object({ name: z.string().min(1).max(200), url: z.string().url().max(2048), pluginId: z.literal("rss"), groups: z.array(groupSchema).max(10).optional(), deliveryMode: z.enum(["curated", "all"]).optional() }).strict();
-const sourcePatchRequest = z.object({ enabled: z.boolean().optional(), name: z.string().min(1).max(200).optional() }).strict().refine((value) => Object.keys(value).length > 0);
+/** Groups are filter identifiers in storage, but the form accepts Czech free text. */
+function normalizeGroup(value: string): string {
+  const slug = value
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .toLocaleLowerCase("cs-CZ")
+    .trim()
+    .replace(/[^a-z0-9]+/gu, "-")
+    .replace(/^-+|-+$/gu, "");
+  return slug === "skola" ? "school" : slug;
+}
+const sourceGroupInputSchema = z.string().max(200).transform(normalizeGroup).pipe(groupSchema);
+const sourceCreateRequest = z.object({ name: z.string().trim().min(1).max(200), url: z.string().trim().url().max(2048), pluginId: z.literal("rss"), groups: z.array(sourceGroupInputSchema).max(10).optional(), deliveryMode: z.enum(["curated", "all"]).optional() }).strict();
+const sourcePatchRequest = z.object({ enabled: z.boolean().optional(), name: z.string().trim().min(1).max(200).optional() }).strict().refine((value) => Object.keys(value).length > 0);
 const preferenceRequest = z.object({ preferences: preferenceSchema, expectedVersion: z.number().int().min(1) }).strict();
 const stateRequest = z.object({ patch: z.object({ read: z.boolean().optional(), saved: z.boolean().optional(), hidden: z.boolean().optional() }).strict().refine((value) => Object.keys(value).length > 0), expectedVersion: z.number().int().nonnegative(), operationId: idSchema }).strict();
 const editorExportRequest = z.object({ operationId: idSchema }).strict();
@@ -295,8 +320,8 @@ export function createPrototypeApi(dependencies: PrototypeApiDependencies) {
           }
           let ingested = 0;
           const errors = [...(collected.errors ?? [])];
-          if (!collected.complete || collected.inputs.length > MAX_REFRESH_INPUTS)
-            errors.push(`Prototyp načítá prvních ${MAX_REFRESH_INPUTS} položek zdroje. Starší položky nyní nejsou importovány.`);
+          // Useknutí na MAX_REFRESH_INPUTS je vlastnost prototypu, ne chyba zdroje: nese ho `complete`, do lastError nepatří.
+          const truncated = !collected.complete || collected.inputs.length > MAX_REFRESH_INPUTS;
           for (const input of collected.inputs.slice(0, MAX_REFRESH_INPUTS)) {
             try {
               await service.ingest(principal, { ...input, sourceId: source.id, sourceName: source.name, groups: source.groups, deliveryMode: source.deliveryMode });
@@ -305,7 +330,7 @@ export function createPrototypeApi(dependencies: PrototypeApiDependencies) {
           }
           const next = sourceSchema.parse({ ...source, lastFetchedAt: now(), lastError: errors[0] ?? null });
           await auxStore.putSource(principal.uid, next);
-          return response({ ingested, errors, complete: collected.complete !== false && collected.inputs.length <= MAX_REFRESH_INPUTS });
+          return response({ ingested, errors, complete: !truncated });
         }
       }
 

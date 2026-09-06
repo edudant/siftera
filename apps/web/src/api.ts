@@ -39,8 +39,13 @@ export interface RefreshResult {
   skipped?: number;
 }
 
+export interface ApiErrorDetail {
+  field: string;
+  reason: string;
+}
+
 export class ApiError extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(readonly status: number, message: string, readonly details: ApiErrorDetail[] = []) {
     super(message);
     this.name = "ApiError";
   }
@@ -60,8 +65,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (response.status === 204) return undefined as T;
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
-    throw new ApiError(response.status, body?.error?.message ?? `Požadavek selhal (${response.status}).`);
+    const body = (await response.json().catch(() => null)) as { error?: { message?: string; details?: ApiErrorDetail[] } } | null;
+    throw new ApiError(response.status, body?.error?.message ?? `Požadavek selhal (${response.status}).`, body?.error?.details ?? []);
   }
   return (await response.json()) as T;
 }
