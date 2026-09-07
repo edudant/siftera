@@ -7,6 +7,7 @@
  *   SIFTERA_API=https://… SIFTERA_TOKEN=… node scripts/ingest-once.mjs
  */
 import { createDefaultConnectorRegistry, SafeHttpClient } from "../packages/connectors/dist/index.js";
+import { matchEpisode, spotifyClient } from "./spotify.mjs";
 
 const api = (process.env.SIFTERA_API ?? "http://127.0.0.1:8787").replace(/\/$/, "");
 const token = process.env.SIFTERA_TOKEN ?? "";
@@ -43,6 +44,42 @@ const http = new SafeHttpClient({
 });
 const registry = createDefaultConnectorRegistry({ http });
 
+// Epizody na Spotify se dohledávají tady, ne ve Workeru: klíče zůstávají na tomto stroji (ADR-023).
+const spotify = await spotifyClient();
+if (!spotify) console.log("Spotify: bez klíčů, epizodní odkazy se nedoplní.");
+
+/**
+ * Doplní položkám pořadu odkaz na konkrétní epizodu. Když se epizoda nenajde, zůstává `media` od
+ * konektoru (přímý zvukový soubor) a klient otevře pořad — nikdy se nehádá.
+ */
+async function withSpotify(source, items) {
+  if (!spotify || !source.spotifyShowId) return { items, matched: 0 };
+  let episodes;
+  try {
+    episodes = await spotify.showEpisodes(source.spotifyShowId);
+  } catch (error) {
+    console.log(`  Spotify: ${error instanceof Error ? error.message : "chyba"}`);
+    return { items, matched: 0 };
+  }
+  let matched = 0;
+  const next = items.map((item) => {
+    const episode = matchEpisode(episodes, item.title);
+    if (!episode) return item;
+    matched += 1;
+    return {
+      ...item,
+      medium: "audio",
+      media: {
+        provider: "spotify",
+        externalId: episode.id,
+        url: `https://open.spotify.com/episode/${episode.id}`,
+        durationSeconds: Number.isInteger(episode.duration_ms) ? Math.round(episode.duration_ms / 1000) : item.media?.durationSeconds ?? null,
+      },
+    };
+  });
+  return { items: next, matched };
+}
+
 /** Kolik položek se posílá v jednom requestu. Velká dávka narazí na CPU limit Workeru (chyba 1102). */
 const BATCH = Number(process.env.SIFTERA_BATCH ?? 5);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -66,9 +103,10 @@ let total = 0;
 for (const source of active) {
   try {
     const collected = await registry.collect("rss", { sourceId: source.id, sourceName: source.name, groups: source.groups, deliveryMode: source.deliveryMode, url: source.url, maxItems: 25 });
-    const items = collected.inputs.map(({ url, title, excerpt, body, publishedAt, categories, image, media, medium, externalId }) =>
+    const collectedItems = collected.inputs.map(({ url, title, excerpt, body, publishedAt, categories, image, media, medium, externalId }) =>
       ({ url, title, excerpt, body, publishedAt, categories, image, media, medium, externalId }));
-    if (!items.length) { console.log(`${source.name}: nic nového`); continue; }
+    if (!collectedItems.length) { console.log(`${source.name}: nic nového`); continue; }
+    const { items, matched } = await withSpotify(source, collectedItems);
     let received = 0;
     let created = 0;
     let revised = 0;
@@ -82,7 +120,7 @@ for (const source of active) {
       revised += result.revised;
     }
     total += created;
-    console.log(`${source.name}: přijato ${received}, nových ${created}, aktualizovaných ${revised}${collected.complete === false ? " (zdroj byl delší než limit)" : ""}`);
+    console.log(`${source.name}: přijato ${received}, nových ${created}, aktualizovaných ${revised}${matched ? `, epizod ze Spotify ${matched}` : ""}${collected.complete === false ? " (zdroj byl delší než limit)" : ""}`);
   } catch (error) {
     console.error(`${source.name}: ${error instanceof Error ? error.message : "selhalo"}`);
   }

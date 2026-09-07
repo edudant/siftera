@@ -38,8 +38,9 @@ const demo = {
   inbox: [],
   hidden: [],
   // URL zdroje může nést privátní token (soukromý podcast feed), takže ven jde jen doména.
-  sources: source.sources.map(({ id, name, url, pluginId, groups, deliveryMode, imageMode }) =>
-    ({ id, name, url: publicOrigin(url), pluginId, groups, deliveryMode, imageMode, enabled: true, createdAt: new Date(0).toISOString(), lastFetchedAt: null, lastError: null })),
+  // spotifyShowId je veřejný identifikátor pořadu (je v každém odkazu na Spotify), takže ven smí.
+  sources: source.sources.map(({ id, name, url, pluginId, groups, deliveryMode, imageMode, spotifyShowId }) =>
+    ({ id, name, url: publicOrigin(url), pluginId, groups, deliveryMode, imageMode, spotifyShowId: spotifyShowId ?? null, enabled: true, createdAt: new Date(0).toISOString(), lastFetchedAt: null, lastError: null })),
   plugins: source.plugins,
 };
 

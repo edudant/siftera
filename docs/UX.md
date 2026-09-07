@@ -61,7 +61,7 @@ Ovládání je v hlavičce karty vedle zdroje: **uložit** jako viditelná ikona
 
 **Video hraje v kartě.** U YouTube položky je místo statického náhledu fasáda s tlačítkem přehrát; kliknutí vloží přehrávač přímo do karty, takže se nikam neodchází a nemusí se obnovovat pozice. Do kliknutí nejde na přehrávač žádný request. Hraje vždy jen jedno video — spuštěním dalšího se předchozí zavře. Spuštění je čtení, stejně jako rozbalení textu.
 
-**Podcast míří do Spotify.** U audio položky ze zdroje označeného skupinou `spotify` vede tapnutí, nadpis i vlastní tlačítko do Spotify — tam má uživatel rozposlouchané epizody a historii. Stránka zdroje zůstává pod „···“, protože nese poznámky a odkazy z epizody. Placené exkluzivity, které na Spotify nejsou, tlačítko nedostanou.
+**Podcast míří do Spotify.** U audio položky ze zdroje s dohledaným pořadem vede tapnutí, nadpis i vlastní tlačítko do Spotify — tam má uživatel rozposlouchané epizody a historii. Míří se na konkrétní epizodu, a dokud u položky epizodní ID není, na pořad, kde je nejnovější epizoda nahoře; nikdy na vyhledávání, protože ranking cizí služby není nic, na čem se dá postavit odkaz. Stránka zdroje zůstává pod „···“, protože nese poznámky a odkazy z epizody. Placené exkluzivity, které na Spotify nejsou, tlačítko nedostanou.
 
 **Tap na kartu otevře originál**, ve stejné kartě. Klikatelná je celá plocha kromě textu shrnutí, rozbalených podrobností a ovládacích prvků. Aby se do odchodu netrefil scroll, tap se počítá jen jako čisté tapnutí: posun prstu nad10px nebo držení nad500ms se bere jako rolování, ne jako volba. Nadpis je zároveň skutečný odkaz, takže cíl je dostupný i klávesnicí a čtečkou obrazovky — žádná akce není dostupná jen gestem.
 

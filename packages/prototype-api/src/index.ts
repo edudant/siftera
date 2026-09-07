@@ -41,6 +41,9 @@ const sourceSchema = z
     groups: z.array(groupSchema).max(10),
     deliveryMode: z.enum(["curated", "all"]),
     imageMode: z.enum(["auto", "large", "small", "none"]).default("auto"),
+    // Pořad na Spotify se dohledává mimo Worker (lokálně, s klíči k Web API) a ukládá se sem, aby klient
+    // mohl otevřít pořad i u položek vydaných dřív, než se epizodní ID znalo.
+    spotifyShowId: z.string().regex(/^[A-Za-z0-9]{22}$/).nullable().default(null),
     enabled: z.boolean(),
     createdAt: z.string().datetime({ offset: true }),
     lastFetchedAt: z.string().datetime({ offset: true }).nullable(),
@@ -100,8 +103,8 @@ export interface PrototypeApiDependencies {
 }
 
 const now = () => new Date().toISOString();
-const publicSource = ({ id, name, url, pluginId, groups, deliveryMode, imageMode, enabled, createdAt, lastFetchedAt, lastError }: PrototypeSource) =>
-  ({ id, name, url, pluginId, groups, deliveryMode, imageMode, enabled, createdAt, lastFetchedAt, lastError });
+const publicSource = ({ id, name, url, pluginId, groups, deliveryMode, imageMode, spotifyShowId, enabled, createdAt, lastFetchedAt, lastError }: PrototypeSource) =>
+  ({ id, name, url, pluginId, groups, deliveryMode, imageMode, spotifyShowId, enabled, createdAt, lastFetchedAt, lastError });
 const systemFor = (principal: Principal): Principal => ({
   uid: principal.uid,
   kind: "system",
@@ -231,7 +234,7 @@ function normalizeGroup(value: string): string {
 }
 const sourceGroupInputSchema = z.string().max(200).transform(normalizeGroup).pipe(groupSchema);
 const sourceCreateRequest = z.object({ name: z.string().trim().min(1).max(200), url: z.string().trim().url().max(2048), pluginId: z.literal("rss"), groups: z.array(sourceGroupInputSchema).max(10).optional(), deliveryMode: z.enum(["curated", "all"]).optional(), imageMode: z.enum(["auto", "large", "small", "none"]).optional() }).strict();
-const sourcePatchRequest = z.object({ enabled: z.boolean().optional(), name: z.string().trim().min(1).max(200).optional(), groups: z.array(sourceGroupInputSchema).max(10).optional(), imageMode: z.enum(["auto", "large", "small", "none"]).optional() }).strict().refine((value) => Object.keys(value).length > 0);
+const sourcePatchRequest = z.object({ enabled: z.boolean().optional(), name: z.string().trim().min(1).max(200).optional(), groups: z.array(sourceGroupInputSchema).max(10).optional(), imageMode: z.enum(["auto", "large", "small", "none"]).optional(), spotifyShowId: z.string().regex(/^[A-Za-z0-9]{22}$/).nullable().optional() }).strict().refine((value) => Object.keys(value).length > 0);
 const preferenceRequest = z.object({ preferences: preferenceSchema, expectedVersion: z.number().int().min(1) }).strict();
 const stateRequest = z.object({ patch: z.object({ read: z.boolean().optional(), saved: z.boolean().optional(), hidden: z.boolean().optional() }).strict().refine((value) => Object.keys(value).length > 0), expectedVersion: z.number().int().nonnegative(), operationId: idSchema }).strict();
 const ingestRequest = z.object({

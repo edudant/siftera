@@ -65,30 +65,16 @@ function youtubeId(item: EditorialItem): string | null {
   } catch { return null; }
 }
 /**
- * Podcast má smysl otevírat tam, kde ho uživatel poslouchá. Přesnou epizodu vydáme, jen když ji nese
- * `media`; jinak se skládá vyhledání v záložce epizod, které na původní název trefuje epizodu prvním
- * výsledkem. Nabízí se to jen u zdrojů označených skupinou „spotify“ — placené exkluzivity tam nejsou.
+ * Podcast má smysl otevírat tam, kde ho uživatel poslouchá. Cíl má dvě úrovně a obě jsou deterministické:
+ * epizodu, když ji položka nese v `media` (doplňuje lokální ingest ze Spotify Web API), jinak pořad podle
+ * `spotifyShowId` zdroje — tam je nejnovější epizoda nahoře. Vyhledávací odkaz se nepoužívá: v aplikaci se
+ * na české názvy trefuje nespolehlivě (ADR-023). Odkaz na pořad zabere i u položek vydaných dřív, protože
+ * vydání jsou nemměnná (ADR-010) a epizodní ID k nim už nedoplníme.
  */
-function spotifyTarget(item: EditorialItem, onSpotify: Set<string>): string | null {
+function spotifyTarget(item: EditorialItem, shows: Map<string, string>): string | null {
   if (item.media?.provider === "spotify" && item.media.externalId) return `https://open.spotify.com/episode/${item.media.externalId}`;
-  const provenance = item.provenance[0];
-  if (!provenance?.sourceId || !onSpotify.has(provenance.sourceId)) return null;
-  // Hledá se původní název epizody, ne náš přepsaný titulek: ten by ve Spotify nenašel nic.
-  // Dvojtečka je ve vyhledávání Spotify filtr pole (`show:`), takže interpunkce musí pryč i s emoji.
-  const clean = (value: string) => value
-    .replace(/^(bonus|special|speciál)\s*[:–-]\s*/i, "")
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  const show = clean(provenance.sourceName ?? "");
-  const title = clean(provenance.title);
-  // Jméno pořadu pomáhá jen u krátkých názvů („Tech Now"). U dlouhých název sám stačí a přívěsek dotaz
-  // rozmělňuje; když už jméno pořadu v názvu je, přidávat ho nemá smysl vůbec.
-  const enough = title.split(" ").length >= 5 || folded(title).includes(folded(show));
-  const query = (enough ? title : `${title} ${show}`).slice(0, 120).trim();
-  // Cesta musí skončit dotazem. Mobilní aplikace bere jako dotaz poslední segment, takže z „/search/<dotaz>/episodes"
-  // hledala slovo „episodes"; záložka typu se v odkazu vynechává.
-  return query ? `https://open.spotify.com/search/${encodeURIComponent(query)}` : null;
+  const show = item.provenance[0]?.sourceId ? shows.get(item.provenance[0].sourceId) : undefined;
+  return show ? `https://open.spotify.com/show/${show}` : null;
 }
 /** „12:04“, u delších „1:02:44“. */
 function clock(seconds: number | null | undefined): string | null {
@@ -263,7 +249,7 @@ export default function App() {
   const hideCandidate = async (entry: InboxEntry, hidden = true) => { try { await api.setItemState(entry.candidate.id, entry.state.version, { hidden }); await reload(true); } catch (reason) { setNotice(message(reason)); } };
   // Skupina zdroje se čte z živé konfigurace, ne z vydání: vydané položky jsou nemměnné (ADR-010),
   // takže označení „je na Spotify" musí zabrat i u toho, co bylo vydané dřív.
-  const onSpotify = useMemo(() => new Set((data?.sources ?? []).filter((entry) => entry.groups.includes("spotify")).map((entry) => entry.id)), [data]);
+  const onSpotify = useMemo(() => new Map((data?.sources ?? []).flatMap((entry) => entry.spotifyShowId ? [[entry.id, entry.spotifyShowId] as const] : [])), [data]);
   /**
    * Originál se otevírá ve stejné kartě, v PWA i v prohlížeči: uživatel se vrací tlačítkem zpět, nezavírá karty.
    * Pozici ve feedu si proto ukládáme sami — bez toho by se SPA po návratu načetla odshora.
@@ -381,7 +367,7 @@ function FeedView({ data, setTab, onState, onHide, onOpen, modes, names, filter,
   const category = channel.category;
   const saved = channel.special === "saved";
   // Zdroje k filtrování drží kanál: v kategorii jen její, v Přehledu všechny.
-  const onSpotify = useMemo(() => new Set((data?.sources ?? []).filter((entry) => entry.groups.includes("spotify")).map((entry) => entry.id)), [data]);
+  const onSpotify = useMemo(() => new Map((data?.sources ?? []).flatMap((entry) => entry.spotifyShowId ? [[entry.id, entry.spotifyShowId] as const] : [])), [data]);
   const sources = useMemo(() => {
     const all = data?.sources ?? [];
     return category && category.sourceIds.length ? all.filter((entry) => category.sourceIds.includes(entry.id)) : all;
@@ -472,7 +458,7 @@ function streamNote(data: Bootstrap | null): string | null {
 function Page({ title, eyebrow, children }: { title: string; eyebrow: string; children: React.ReactNode }) { return <section><div className="heading"><p>{eyebrow}</p><h1>{title}</h1></div>{children}</section>; }
 function Loading() { return <div className="cards" aria-busy="true"><div className="skeleton"/><div className="skeleton"/><div className="skeleton"/></div>; }
 
-function Cards({ items, onState, onOpen, modes, names, onSpotify, empty, tail = [] }: { items: FeedItem[]; onState: (item: FeedItem, patch: { read?: boolean; saved?: boolean; hidden?: boolean }) => Promise<void>; onOpen: (feed: FeedItem, prefer?: "auto" | "source") => void; modes: Map<string, ImageMode>; names: Map<string, string>; onSpotify: Set<string>; empty: React.ReactNode; tail?: React.ReactNode[] }) {
+function Cards({ items, onState, onOpen, modes, names, onSpotify, empty, tail = [] }: { items: FeedItem[]; onState: (item: FeedItem, patch: { read?: boolean; saved?: boolean; hidden?: boolean }) => Promise<void>; onOpen: (feed: FeedItem, prefer?: "auto" | "source") => void; modes: Map<string, ImageMode>; names: Map<string, string>; onSpotify: Map<string, string>; empty: React.ReactNode; tail?: React.ReactNode[] }) {
   const watch = useSeen();
   // Který přehrávač je živý, ví proud: spuštěním dalšího videa první zmizí, takže nikdy nehrají dvě naráz.
   const [playing, setPlaying] = useState<string | null>(null);
@@ -697,17 +683,22 @@ function hue(seed: string): number {
 const measured = new Map<string, number>();
 const TOO_SMALL = 480;
 function Shot({ image, alt, thumb, onSmall }: { image: EditorialItem["image"]; alt: string; thumb?: boolean; onSmall?: () => void }) {
-  if (image) return <div className={thumb ? "shot thumb" : "shot"}><img
+  const [failed, setFailed] = useState(false);
+  // Nedostupný obrázek nesmí po sobě nechat prázdný blok: karta se má sesypat, jako by obraz vůbec neměla.
+  // Stav místo classList — a kontrola i při připojení, protože obrázek z cache umí selhat dřív, než React
+  // stihne navěsit onError (typicky u zdrojů, které nepustí hotlink bez referreru).
+  if (!image || failed) return null;
+  return <div className={thumb ? "shot thumb" : "shot"}><img
     src={image.url} alt={image.alt || alt} loading="lazy" decoding="async" referrerPolicy="no-referrer"
+    ref={(element) => { if (element?.complete && element.naturalWidth === 0) setFailed(true); }}
     onLoad={(event) => {
       const width = event.currentTarget.naturalWidth;
       if (!width) return;
       measured.set(image.url, width);
       if (width < TOO_SMALL) onSmall?.();
     }}
-    onError={(event) => { event.currentTarget.closest(".shot")?.classList.add("failed"); }}
+    onError={() => setFailed(true)}
   /></div>;
-  return null;
 }
 
 /**

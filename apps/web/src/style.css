@@ -179,7 +179,6 @@ header.away { transform: translateY(-100%) }
 .shot.player .play .icon-svg { margin-left: 3px }
 .shot.player .face:hover .play { transform: scale(1.06); background: rgba(12, 12, 14, .82) }
 .shot.player .dur { position: absolute; right: 8px; bottom: 8px; background: rgba(12, 12, 14, .82); color: #fff; font-size: 12px; font-weight: 700; padding: 2px 6px; border-radius: 5px; letter-spacing: .01em }
-.shot.failed { display: none }
 .shot.thumb.blank span { font-size: 11px; padding: 4px }
 /* Textová karta: bez obrazu, text sám nese pozornost. */
 .card.text h2 { font-size: 21px }

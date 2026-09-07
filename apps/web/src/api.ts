@@ -22,6 +22,7 @@ export interface PrototypeSource {
   groups: string[];
   deliveryMode: "curated" | "all";
   imageMode?: ImageMode;
+  spotifyShowId?: string | null;
   enabled: boolean;
   createdAt: string;
   lastFetchedAt: string | null;

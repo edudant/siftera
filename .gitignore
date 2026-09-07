@@ -15,3 +15,4 @@ coverage/
 .dev.vars.*
 .siftera-prod-token
 .claude/
+.siftera-spotify
