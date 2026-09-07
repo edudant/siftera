@@ -66,8 +66,8 @@ let total = 0;
 for (const source of active) {
   try {
     const collected = await registry.collect("rss", { sourceId: source.id, sourceName: source.name, groups: source.groups, deliveryMode: source.deliveryMode, url: source.url, maxItems: 25 });
-    const items = collected.inputs.map(({ url, title, excerpt, body, publishedAt, categories, image, externalId }) =>
-      ({ url, title, excerpt, body, publishedAt, categories, image, externalId }));
+    const items = collected.inputs.map(({ url, title, excerpt, body, publishedAt, categories, image, media, medium, externalId }) =>
+      ({ url, title, excerpt, body, publishedAt, categories, image, media, medium, externalId }));
     if (!items.length) { console.log(`${source.name}: nic nového`); continue; }
     let received = 0;
     let created = 0;

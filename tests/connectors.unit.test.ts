@@ -188,3 +188,39 @@ describe("media groups", () => {
     expect(result.inputs[0]?.image).toMatchObject({ url: "https://i.ytimg.com/vi/abc123/hqdefault.jpg", width: 480, height: 360 });
   });
 });
+
+describe("rozpoznání videa (přehrávání ve feedu)", () => {
+  const atom = (entry: string) => `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><title>Kanál</title>${entry}</feed>`;
+
+  it("označí YouTube položku jako video a uloží identifikátor i délku", async () => {
+    const feed = atom(`<entry><title>Video</title><link rel="alternate" href="https://www.youtube.com/watch?v=FluKUJyeYD8" />
+      <yt:videoId>FluKUJyeYD8</yt:videoId>
+      <media:group><media:content url="https://www.youtube.com/v/FluKUJyeYD8?version=3" duration="754" /></media:group>
+    </entry>`);
+    const result = await new RssAtomConnector(http(feed, "application/atom+xml")).collect({ ...source, url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCabc" });
+    expect(result.inputs[0]?.medium).toBe("video");
+    expect(result.inputs[0]?.media).toEqual({
+      provider: "youtube", externalId: "FluKUJyeYD8",
+      url: "https://www.youtube.com/watch?v=FluKUJyeYD8", durationSeconds: 754,
+    });
+  });
+
+  it("pozná video i bez yt:videoId, podle kanonické adresy", async () => {
+    const feed = atom(`<entry><title>Video</title><link rel="alternate" href="https://youtu.be/0Rp9KJCEIvg" /></entry>`);
+    const result = await new RssAtomConnector(http(feed, "application/atom+xml")).collect({ ...source, url: "https://example.com/atom" });
+    expect(result.inputs[0]?.media?.externalId).toBe("0Rp9KJCEIvg");
+  });
+
+  it("cizí adresu za video nevydává, i když se tak jmenuje", async () => {
+    const feed = atom(`<entry><title>Článek o YouTube</title><link rel="alternate" href="https://example.com/youtube.com/watch?v=abc" /></entry>`);
+    const result = await new RssAtomConnector(http(feed, "application/atom+xml")).collect({ ...source, url: "https://example.com/atom" });
+    expect(result.inputs[0]?.medium).toBe("text");
+    expect(result.inputs[0]?.media ?? null).toBeNull();
+  });
+
+  it("nesmyslný identifikátor odmítne, aby se do embedu nedostal cizí vstup", async () => {
+    const feed = atom(`<entry><title>Video</title><link rel="alternate" href="https://www.youtube.com/watch?v=../../etc/passwd" /></entry>`);
+    const result = await new RssAtomConnector(http(feed, "application/atom+xml")).collect({ ...source, url: "https://example.com/atom" });
+    expect(result.inputs[0]?.media ?? null).toBeNull();
+  });
+});

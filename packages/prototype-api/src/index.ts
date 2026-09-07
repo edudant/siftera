@@ -11,6 +11,8 @@ import {
 import {
   editorialSubmissionSchema,
   idSchema,
+  mediaMetaSchema,
+  mediumSchema,
   preferenceSchema,
   type Candidate,
   type CandidateContent,
@@ -246,6 +248,8 @@ const ingestRequest = z.object({
     categories: z.array(z.string().max(80)).max(30).optional(),
     image: z.object({ url: z.string().url().max(2048), width: z.number().int().positive().nullable(), height: z.number().int().positive().nullable(), alt: z.string().max(500) }).strict().nullable().optional(),
     externalId: z.string().max(500).nullable().optional(),
+    medium: mediumSchema.optional(),
+    media: mediaMetaSchema.nullable().optional(),
   }).strict()).min(1).max(100),
 }).strict();
 const seenRequest = z.object({ candidateIds: z.array(idSchema).min(1).max(200) }).strict();
@@ -365,6 +369,8 @@ export function createPrototypeApi(dependencies: PrototypeApiDependencies) {
               publishedAt: entry.publishedAt ?? null,
               categories: entry.categories ?? [],
               image: entry.image ?? null,
+              media: entry.media ?? null,
+              medium: entry.medium ?? "text",
               externalId: entry.externalId ?? null,
               access: entry.body ? "partial" : "unavailable",
             });

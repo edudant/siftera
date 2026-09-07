@@ -303,12 +303,35 @@ function rssItem(source: ConnectorSource, item: Record<string, unknown>, feedUrl
   }
 }
 
+/**
+ * YouTube položku pozná feed dvakrát: podle `yt:videoId` v Atomu i podle kanonické adresy. Rozpoznání dává
+ * klientovi právo přehrát video na místě (oficiální embed), takže se ukládá do kontraktu, ne jen do UI.
+ */
+function youtubeMedia(item: Record<string, unknown>, url: string): NonNullable<IngestInput["media"]> | null {
+  const declared = whitespace(text(field(item, "yt:videoId")));
+  let derived: string | null = null;
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, "");
+    if (host === "youtu.be") derived = parsed.pathname.slice(1);
+    else if (host === "youtube.com" || host === "m.youtube.com") derived = parsed.searchParams.get("v");
+  } catch { derived = null; }
+  const id = [declared, derived].find((value) => value && /^[\w-]{11}$/.test(value)) ?? null;
+  if (!id) return null;
+  // Délku hlásí YouTube v media:content jako sekundy; jiné feedy ji neposílají vůbec.
+  const seconds = asList(field(item, "media:content"))
+    .map((entry) => Number.parseInt(text(asRecord(entry)?.["@duration"] ?? ""), 10))
+    .find((value) => Number.isInteger(value) && value > 0) ?? null;
+  return { provider: "youtube", externalId: id, url, durationSeconds: seconds };
+}
+
 function atomItem(source: ConnectorSource, item: Record<string, unknown>, feedUrl: string): NormalizedIngestInput | null {
   const xmlBase = text(item["@xml:base"]);
   const base = xmlBase ? new URL(xmlBase, feedUrl).toString() : feedUrl;
   const url = resolvedLink(field(item, "link"), base);
   if (!url) return null;
   const media = mediaGroup(item);
+  const video = youtubeMedia(media, url);
   const content = text(field(item, "content"));
   const summary = text(field(item, "summary", "subtitle")) || text(field(media, "media:description"));
   const title = text(field(item, "title")) || new URL(url).hostname;
@@ -328,8 +351,9 @@ function atomItem(source: ConnectorSource, item: Record<string, unknown>, feedUr
             return record ? text(record["@term"]) : text(category);
           })
           .filter(Boolean),
-        medium: "text",
+        medium: video ? "video" : "text",
         image: feedImage(media, base),
+        ...(video ? { media: video } : {}),
         access: content ? "partial" : "unavailable",
       },
       "rss",

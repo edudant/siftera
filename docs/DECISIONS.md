@@ -2,6 +2,16 @@
 
 Status accepted, v1, 2026-09-06. Tento soubor uzavírá doporučené volby; změny vyžadují konkrétní důvod a dopad, nikoli opakované obecné porovnávání stacků.
 
+## ADR-022 Video se přehrává ve feedu, ale až na kliknutí
+
+Odchod na originál je u článků nutnost — cizí web se do iframu vložit nedá, protože si to zakazuje sám (`X-Frame-Options`). YouTube je výjimka: embed nabízí oficiálně, takže u videa není důvod feed opouštět. Karta proto přehrává na místě.
+
+Vloženo je to jako **fasáda**: dokud uživatel nezmáčkne přehrát, na přehrávač nejde ani jeden request — v kartě leží jen náhled, který stejně nese už samotná položka. Po kliknutí se vloží iframe na `youtube-nocookie.com`. Sledování tak zůstává důsledkem volby, ne důsledkem otevření feedu; to je stejná úvaha, jako proč Siftera nemá analytiku. Hraje vždycky nejvýš jedno video: který přehrávač je živý, drží proud karet, takže spuštěním dalšího ten předchozí zmizí i se zvukem.
+
+Spuštění videa se počítá jako přečtení, stejně jako rozbalení textu (ADR-015) — a protože se nikam neodchází, nemusí se u videa vůbec obnovovat pozice ve feedu. Video také nesmí skončit jako náhled v kompaktním řádku, takže `emphasis=compact` se u něj překlápí na standardní kartu.
+
+Identifikátor videa nese kontrakt: konektor rozpozná YouTube podle `yt:videoId` i podle kanonické adresy a zapíše `medium=video` a `media={provider,externalId,url,durationSeconds}`, ingest to propouští dál. Vydané položky jsou ale nemměnné (ADR-010), takže starší vydání `media` nikdy nedostane — pro ně klient identifikátor odvodí z kanonické adresy a přijme jen jedenáctiznakový tvar, aby se do embedu nedostal cizí vstup. Spotify a ostatní podcasty tímhle nekončí u přehrávače: audio z enclosure by šlo hrát nativně přes `<audio>`, ale to je vlastní rozhodnutí, ne rozšíření tohoto.
+
 ## ADR-021 Kanály jako ikony, režim uvnitř kanálu
 
 7. 9. se ukázalo, že tři textové taby (Výběr / Vše / Uložené) míchají dvě různé otázky: *co* čtu a *jak* to čtu. Uživatel chce brouzdat po oblastech — zprávy, technika, podcasty, video — a v každé z nich se rozhodnout, jestli vidí jen nepřečtené, nebo celý archiv. Do budoucna k nim mají přibýt i pracovní přehledy (například otevřené merge requesty), kde je „oblast" ještě zřetelnější.

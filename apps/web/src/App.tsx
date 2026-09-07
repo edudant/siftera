@@ -47,6 +47,30 @@ function sourceLabel(sourceId: string | undefined, frozen: string | undefined, n
 }
 const RESUME_KEY = "siftera:resume";
 /**
+ * YouTube je jediný zdroj, který dovoluje přehrát obsah přímo ve feedu (oficiální embed) — u článků to
+ * zakazuje `X-Frame-Options` zdroje. Identifikátor bere z `media`, ale vydané položky jsou nemměnné
+ * (ADR-010), takže starším vydáním, která ještě `media` nenesla, ho odvodí z kanonické adresy.
+ */
+function youtubeId(item: EditorialItem): string | null {
+  if (item.media?.provider === "youtube" && item.media.externalId) return item.media.externalId;
+  const url = item.provenance[0]?.canonicalUrl;
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, "");
+    const id = host === "youtu.be" ? parsed.pathname.slice(1)
+      : host === "youtube.com" || host === "m.youtube.com" ? parsed.searchParams.get("v") ?? (parsed.pathname.startsWith("/shorts/") ? parsed.pathname.slice(8) : null)
+      : null;
+    return id && /^[\w-]{11}$/.test(id) ? id : null;
+  } catch { return null; }
+}
+/** „12:04“, u delších „1:02:44“. */
+function clock(seconds: number | null | undefined): string | null {
+  if (!seconds || seconds < 0) return null;
+  const parts = [Math.floor(seconds / 3600), Math.floor((seconds % 3600) / 60), Math.floor(seconds % 60)];
+  return (parts[0] ? [parts[0], String(parts[1]).padStart(2, "0")] : [parts[1]]).concat(String(parts[2]).padStart(2, "0")).join(":");
+}
+/**
  * Ikony kreslíme, ne píšeme: textové glyfy jako ⌕ nebo ＋ mají na každé platformě jinou šířku i optickou váhu.
  * Jeden tvar, jedna tloušťka tahu, velikost dědí z fontu rodiče.
  */
@@ -61,6 +85,7 @@ const GLYPHS: Record<string, React.ReactNode> = {
   more: <><circle cx="5.4" cy="12" r="1.5" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" /><circle cx="18.6" cy="12" r="1.5" fill="currentColor" stroke="none" /></>,
   sort: <path d="M7 4.5v15M7 19.5 3.6 16M17 19.5v-15M17 4.5 20.4 8" />,
   undo: <path d="M4.6 9.5h10.2a4.7 4.7 0 0 1 0 9.4H8M4.6 9.5 8.6 5.5M4.6 9.5l4 4" />,
+  play: <path d="M7.4 4.8 19.6 12 7.4 19.2z" fill="currentColor" stroke="none" />,
   home: <path d="M3.8 10.7 12 4.2l8.2 6.5V20H3.8zM9.6 20v-5.6h4.8V20" />,
   news: <><rect x="3.2" y="5.6" width="17.6" height="12.8" rx="2.1" /><path d="M6.6 9.4h6.2M6.6 12.4h6.2M6.6 15.3h4M16 9.4h1.6M16 12.4h1.6M16 15.3h1.6" /></>,
   tech: <><rect x="7.2" y="7.2" width="9.6" height="9.6" rx="2" /><path d="M12 3.4v3.8M12 16.8v3.8M3.4 12h3.8M16.8 12h3.8M8.6 3.9v3.3M15.4 3.9v3.3M8.6 16.8v3.3M15.4 16.8v3.3" /></>,
@@ -418,6 +443,8 @@ function Loading() { return <div className="cards" aria-busy="true"><div classNa
 
 function Cards({ items, onState, onOpen, modes, names, empty, tail = [] }: { items: FeedItem[]; onState: (item: FeedItem, patch: { read?: boolean; saved?: boolean; hidden?: boolean }) => Promise<void>; onOpen: (feed: FeedItem) => void; modes: Map<string, ImageMode>; names: Map<string, string>; empty: React.ReactNode; tail?: React.ReactNode[] }) {
   const watch = useSeen();
+  // Který přehrávač je živý, ví proud: spuštěním dalšího videa první zmizí, takže nikdy nehrají dvě naráz.
+  const [playing, setPlaying] = useState<string | null>(null);
   const visible = items.filter((item) => !item.state.hidden);
   const total = visible.length + tail.length;
   const [shown, setShown] = useState(() => {
@@ -438,7 +465,8 @@ function Cards({ items, onState, onOpen, modes, names, empty, tail = [] }: { ite
   useEffect(() => { setShown((count) => Math.min(count, Math.max(PAGE, total))); }, [items, tail.length, total]);
   if (!total) return <>{empty}</>;
   return <><div className="cards">
-    {visible.slice(0, shown).map((feed) => <Card key={feed.item.id} feed={feed} onState={onState} onOpen={onOpen} imageMode={modes.get(feed.item.provenance[0]?.sourceId ?? "") ?? "auto"} watch={watch} names={names} />)}
+    {visible.slice(0, shown).map((feed) => <Card key={feed.item.id} feed={feed} onState={onState} onOpen={onOpen} imageMode={modes.get(feed.item.provenance[0]?.sourceId ?? "") ?? "auto"} watch={watch} names={names}
+      playing={playing === feed.item.id} onPlay={() => setPlaying(feed.item.id)} />)}
     {shown > visible.length && tail.slice(0, shown - visible.length)}
   </div>
     {shown < total && <div ref={more} className="loading-more">Načítám další…</div>}</>;
@@ -542,7 +570,7 @@ function useTap(onTap: () => void) {
   };
 }
 
-function Card({ feed, onState, onOpen, imageMode, watch, names }: { feed: FeedItem; onState: (item: FeedItem, patch: { read?: boolean; saved?: boolean; hidden?: boolean }) => Promise<void>; onOpen: (feed: FeedItem) => void; imageMode: ImageMode; watch: (element: Element | null, candidateId: string) => void; names: Map<string, string> }) {
+function Card({ feed, onState, onOpen, imageMode, watch, names, playing, onPlay }: { feed: FeedItem; onState: (item: FeedItem, patch: { read?: boolean; saved?: boolean; hidden?: boolean }) => Promise<void>; onOpen: (feed: FeedItem) => void; imageMode: ImageMode; watch: (element: Element | null, candidateId: string) => void; names: Map<string, string>; playing: boolean; onPlay: () => void }) {
   const { item, state } = feed;
   const provenance = item.provenance[0];
   const [expanded, setExpanded] = useState(false);
@@ -552,8 +580,9 @@ function Card({ feed, onState, onOpen, imageMode, watch, names }: { feed: FeedIt
   const [clipped, setClipped] = useState(false);
   const readOnArrival = useRef(state.read);
   const [small, setSmall] = useState(item.image ? (item.image.width ?? measured.get(item.image.url) ?? 0) > 0 && (item.image.width ?? measured.get(item.image.url)!) < TOO_SMALL : false);
+  const video = youtubeId(item);
   const base = layoutOf(item, imageMode);
-  const layout: Layout = small && base !== "text" ? "compact" : base;
+  const layout: Layout = video ? (base === "text" ? "standard" : base === "compact" ? "standard" : base) : small && base !== "text" ? "compact" : base;
   const label = sourceLabel(provenance?.sourceId, provenance?.sourceName, names);
   const kind = item.presentation === "long_read" && item.readingMinutes ? `Stojí za přečtení · ${item.readingMinutes} min` : item.presentation === "article" ? null : presentationLabel[item.presentation] ?? null;
   const tap = useTap(() => onOpen(feed));
@@ -569,9 +598,13 @@ function Card({ feed, onState, onOpen, imageMode, watch, names }: { feed: FeedIt
     observer.observe(element);
     return () => observer.disconnect();
   }, [expanded, item.summary]);
-  const shot = layout !== "text" && item.image && imageMode !== "none"
-    ? <Shot image={item.image} alt={item.headline} thumb={layout === "compact"} onSmall={() => setSmall(true)} />
-    : null;
+  // Spuštění videa je čtení stejně jako rozbalení textu; odchod na YouTube tím naopak přestává být nutný.
+  const start = () => { onPlay(); if (!state.read) void onState(feed, { read: true }); };
+  const shot = video
+    ? <Player id={video} title={item.headline} image={item.image} playing={playing} start={start} seconds={item.media?.durationSeconds ?? null} />
+    : layout !== "text" && item.image && imageMode !== "none"
+      ? <Shot image={item.image} alt={item.headline} thumb={layout === "compact"} onSmall={() => setSmall(true)} />
+      : null;
   // Odkaz „Zobrazit víc“ nesmí být uvnitř zkráceného odstavce: clamp ho odstřihne i s ním. Patří pod text,
   // a jen když se text opravdu nevejde — jinak by slibovalo pokračování, které neexistuje.
   const summary = <>
@@ -639,6 +672,25 @@ function Shot({ image, alt, thumb, onSmall }: { image: EditorialItem["image"]; a
     onError={(event) => { event.currentTarget.closest(".shot")?.classList.add("failed"); }}
   /></div>;
   return null;
+}
+
+/**
+ * Fasáda místo embedu: dokud uživatel nespustí přehrávání, nejde na YouTube ani jeden request. Po kliknutí
+ * se vloží iframe na youtube-nocookie.com, takže sledování zůstává na volbě uživatele, ne na otevření feedu.
+ */
+function Player({ id, title, image, playing, start, seconds }: { id: string; title: string; image: EditorialItem["image"]; playing: boolean; start: () => void; seconds: number | null }) {
+  const length = clock(seconds);
+  if (playing) return <div className="shot player"><iframe
+    src={`https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0&modestbranding=1`}
+    title={title} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen
+    loading="lazy" referrerPolicy="strict-origin-when-cross-origin" /></div>;
+  return <div className="shot player">
+    <button className="face" onClick={start} aria-label={`Přehrát video: ${title}`}>
+      {image && <img src={image.url} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" />}
+      <span className="play" aria-hidden="true"><Icon name="play" /></span>
+      {length && <span className="dur">{length}</span>}
+    </button>
+  </div>;
 }
 
 function AddItem({ reload, notice, setTab }: { reload: () => Promise<void>; notice: (text: string) => void; setTab: (tab: Tab) => void }) {
