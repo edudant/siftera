@@ -238,12 +238,13 @@ export default function App() {
           throw new TypeError("siftera_get_status nepřijímá žádný vstup.");
         }
         const current = bootstrapRef.current;
-        return { content: [{ type: "text", text: JSON.stringify({ signedIn: Boolean(current?.user), loaded: { feed: current?.feed.items.length ?? 0, library: current?.library.length ?? 0, inbox: current?.inbox?.length ?? 0, sources: current?.sources.length ?? 0 }, lastPublishedAt: current?.feed.run?.publishedAt ?? null }) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ signedIn: Boolean(current?.user), loaded: { feed: current?.feed.items.length ?? 0, library: current?.library?.length ?? 0, inbox: current?.inbox?.length ?? 0, sources: current?.sources.length ?? 0 }, lastPublishedAt: current?.feed.run?.publishedAt ?? null }) }] };
       },
     }, { signal: controller.signal });
     return () => controller.abort();
   }, []);
-  const all = useMemo(() => data ? [...data.feed.items, ...data.library] : [], [data]);
+  const archive = useLibrary(Boolean(query), data?.preferences.version ?? 0);
+  const all = useMemo(() => data ? [...data.feed.items, ...(archive ?? []), ...data.stream] : [], [data, archive]);
   const results = useMemo(() => { const needle = folded(query); const items = [...new Map(all.map((item) => [item.item.id, item])).values()]; return needle ? items.filter((item) => folded(`${item.item.headline} ${item.item.summary} ${item.item.topics.join(" ")} ${item.item.provenance[0]?.sourceName ?? ""}`).includes(needle)) : []; }, [all, query]);
   const changeState = async (item: FeedItem, patch: { read?: boolean; saved?: boolean; hidden?: boolean }) => { try { await api.setItemState(item.state.candidateId, item.state.version, patch); await reload(true); } catch (reason) { setNotice(message(reason)); } };
   const hideCandidate = async (entry: InboxEntry, hidden = true) => { try { await api.setItemState(entry.candidate.id, entry.state.version, { hidden }); await reload(true); } catch (reason) { setNotice(message(reason)); } };
@@ -349,6 +350,18 @@ function stamp(item: FeedItem): number {
   return Number.isFinite(value) ? value : 0;
 }
 
+/** Archiv drží bootstrap mimo (ADR-020), takže si ho pohledy „Vše", Uložené a hledání dotáhnou samy. */
+function useLibrary(active: boolean, reloadKey: number): FeedItem[] | null {
+  const [library, setLibrary] = useState<FeedItem[] | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    let live = true;
+    void api.library().then((value) => { if (live) setLibrary(value.library); }).catch(() => { if (live) setLibrary([]); });
+    return () => { live = false; };
+  }, [active, reloadKey]);
+  return library;
+}
+
 function usePending(active: boolean, reloadKey: number) {
   const [pending, setPending] = useState<{ inbox: InboxEntry[]; hidden: InboxEntry[] } | null>(null);
   useEffect(() => {
@@ -368,6 +381,10 @@ function FeedView({ data, setTab, onState, onHide, onOpen, modes, names, filter,
   const saved = channel.special === "saved";
   // Zdroje k filtrování drží kanál: v kategorii jen její, v Přehledu všechny.
   const onSpotify = useMemo(() => new Map((data?.sources ?? []).flatMap((entry) => entry.spotifyShowId ? [[entry.id, entry.spotifyShowId] as const] : [])), [data]);
+  // Feed vystačí s proudem z bootstrapu; archiv se dotahuje teprve pro „Vše", Uložené a kategorie.
+  const needsArchive = channel.special === "saved" || filter.mode === "all" || Boolean(category);
+  const archive = useLibrary(needsArchive, data?.preferences.version ?? 0);
+  const library = archive ?? [];
   const sources = useMemo(() => {
     const all = data?.sources ?? [];
     return category && category.sourceIds.length ? all.filter((entry) => category.sourceIds.includes(entry.id)) : all;
@@ -377,23 +394,23 @@ function FeedView({ data, setTab, onState, onHide, onOpen, modes, names, filter,
   const held = useRef<{ key: string; ids: string[] }>({ key: viewKey, ids: [] });
   if (held.current.key !== viewKey) held.current = { key: viewKey, ids: [] };
   const items = useMemo(() => {
-    const base = saved ? (data?.library ?? []).filter((entry) => entry.state.saved)
+    const base = saved ? library.filter((entry) => entry.state.saved)
       : filter.mode === "feed" ? data?.stream ?? []
-      : data?.library ?? [];
+      : library;
     const inChannel = category ? base.filter((item) => matchesCategory(item, category)) : base;
     const filtered = filter.sourceId ? inChannel.filter((item) => item.item.provenance.some((entry) => entry.sourceId === filter.sourceId)) : inChannel;
     const current = filter.sort === "newest" ? [...filtered].sort((left, right) => stamp(right) - stamp(left)) : filtered;
-    const known = new Map((data?.library ?? []).concat(data?.stream ?? []).map((entry) => [entry.item.id, entry]));
+    const known = new Map(library.concat(data?.stream ?? []).map((entry) => [entry.item.id, entry]));
     const order = keepOrder(held.current.ids, current.map((entry) => entry.item.id));
     const resolved = order.map((id) => known.get(id)).filter((entry): entry is FeedItem => Boolean(entry));
     held.current = { key: viewKey, ids: resolved.map((entry) => entry.item.id) };
     return resolved;
-  }, [data, filter, category, saved, viewKey]);
+  }, [data, library, filter, category, saved, viewKey]);
   // Prázdný kanál má dvě různé příčiny: buď je přečtený, nebo do něj ještě nic nedorazilo. Rozlišuje se počtem přes celý archiv.
   const stocked = useMemo(() => {
     if (!category) return true;
-    return (data?.library ?? []).concat(data?.stream ?? []).some((item) => matchesCategory(item, category));
-  }, [data, category]);
+    return library.concat(data?.stream ?? []).some((item) => matchesCategory(item, category));
+  }, [data, library, category]);
   // Nezpracované položky patří do Přehledu / Vše: nikam jinam se ještě zařadit nedaly.
   const rawVisible = !saved && !category && filter.mode === "all";
   const fetched = usePending(rawVisible, data?.preferences.version ?? 0);

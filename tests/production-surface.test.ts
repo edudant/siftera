@@ -168,8 +168,11 @@ describe("unread stream", () => {
     const wide = await context.service.unreadStream(user("owner"), 14);
     expect(wide.map((entry) => entry.item.headline).sort()).toEqual(["dnesni", "starsi"]);
 
+    // Archiv už není v bootstrapu (ADR-020: CPU limit), má vlastní endpoint.
     const bootstrap = await (await context.authorized("/bootstrap")).json();
-    expect(bootstrap.library.map((entry: { item: { headline: string } }) => entry.item.headline).sort()).toEqual(["dnesni", "starsi"]);
+    expect(bootstrap.library).toBeUndefined();
+    const { library } = await (await context.authorized("/library")).json();
+    expect(library.map((entry: { item: { headline: string } }) => entry.item.headline).sort()).toEqual(["dnesni", "starsi"]);
   });
 
   it("demotes a seen item without removing it, and removes it once it is read", async () => {

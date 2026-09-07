@@ -320,19 +320,24 @@ export function createPrototypeApi(dependencies: PrototypeApiDependencies) {
 
     try {
       if (request.method === "GET" && segments.join("/") === "bootstrap") {
-        const [preferences, feed, stream, library, sources] = await Promise.all([
+        // Knihovna se sem nevejde: s rostoucím archivem překročí serializace bezplatný CPU limit Workeru
+        // a bootstrap začne vracet 503 (ADR-020). Feed se proto načte hned, archiv na vyžádání.
+        const [preferences, feed, stream, sources] = await Promise.all([
           service.getPreferences(principal),
           service.latestFeed(principal),
           service.unreadStream(principal),
-          service.libraryFeed(principal),
           auxStore.listSources(principal.uid),
         ]);
         return withCors(response({
           user: { id: principal.uid, email: resolved.email },
-          preferences, feed, stream, library,
+          preferences, feed, stream,
           sources: sources.map(publicSource),
           plugins: [{ id: "rss", label: "RSS / Atom" }, { id: "manual", label: "Manual article" }],
         }));
+      }
+
+      if (request.method === "GET" && segments.join("/") === "library") {
+        return withCors(response({ library: await service.libraryFeed(principal) }));
       }
 
       if (request.method === "GET" && segments.join("/") === "pending") {

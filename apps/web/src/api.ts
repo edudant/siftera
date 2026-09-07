@@ -34,7 +34,8 @@ export interface Bootstrap {
   preferences: PreferenceProfile;
   feed: { run: FeedRun | null; items: FeedItem[] };
   stream: FeedItem[];
-  library: FeedItem[];
+  /** Archiv se dotahuje zvlášť přes `library()`; bootstrap ho nenese, aby se vešel do CPU limitu. */
+  library?: FeedItem[];
   inbox?: Array<{ candidate: Candidate; state: UserItemState }>;
   hidden?: Array<{ candidate: Candidate; state: UserItemState }>;
   sources: PrototypeSource[];
@@ -100,6 +101,7 @@ const httpApi = {
   deleteSource: (id: string) => request<void>(`/sources/${encodeURIComponent(id)}`, { method: "DELETE" }),
   refreshSource: (id: string) => request<RefreshResult>(`/sources/${encodeURIComponent(id)}/refresh`, { method: "POST", body: "{}" }),
   savePreferences: (preferences: PreferenceProfile) => request<PreferenceProfile>("/preferences", { method: "PUT", body: JSON.stringify({ preferences, expectedVersion: preferences.version }) }),
+  library: () => request<{ library: FeedItem[] }>("/library"),
   pending: () => request<{ inbox: Array<{ candidate: Candidate; state: UserItemState }>; hidden: Array<{ candidate: Candidate; state: UserItemState }> }>("/pending"),
   markSeen: (candidateIds: string[]) => request<{ marked: number }>("/items/seen", { method: "POST", body: JSON.stringify({ candidateIds }) }),
   setItemState: (candidateId: string, expectedVersion: number, patch: Partial<Pick<UserItemState, "read" | "saved" | "hidden">>) => request<UserItemState>(`/items/${encodeURIComponent(candidateId)}/state`, { method: "PATCH", body: JSON.stringify({ patch, expectedVersion, operationId: crypto.randomUUID() }) }),

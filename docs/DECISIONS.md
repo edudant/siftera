@@ -42,6 +42,8 @@ Pracovní kanály zůstávají zatím jen připraveným místem: ikona `work` ex
 
 Čekající a skryté položky proto dostaly vlastní `GET /pending` a UI si je stahuje teprve v režimu Vše. Bootstrap spadl na 76 kB a odpovídá stabilně; `/pending` nese zbytek. Rozdělení má i tu výhodu, že první vykreslení feedu nečeká na data, která uživatel většinou nechce vidět.
 
+**Podruhé, 7. 9.:** s knihovnou o 55 vydaných položkách se bootstrap dostal na 234 kB a začal padat znovu — pět z šesti pokusů vrátilo 503, tedy aplikace v produkci nefungovala. Ze stejného důvodu jako u čekajících položek dostal vlastní endpoint i archiv (`GET /library`). Bootstrap tak nese preference, proud nepřečteného a zdroje (131 kB, 10 z 10 pokusů v pořádku) a archiv se dotahuje teprve pro režim Vše, Uložené, kategorie a hledání. Pořadí je záměrné: první vykreslení feedu nemá čekat na data, která uživatel ve výchozím pohledu nevidí. Hranice se ale bude blížit dál a `unreadStream` roste s počtem vydaných položek, takže dalším krokem bude stránkování proudu, ne další dělení.
+
 Stejná hranice se ukázala u zápisu: dávka 25 položek přes `POST /ingest` procházela nespolehlivě (jednou 200 za 4 s, jinak 1102). Lokální ingest proto posílá po pěti položkách a na 503 nebo 429 opakuje s narůstajícím odstupem. Po této změně prošlo všech 24 zdrojů bez chyby. Placený plán (30 s CPU) by obojí problém odstranil, ale prototyp má zůstat provozovatelný zdarma.
 
 ## ADR-019 Produkční Worker: token, CORS a ingest zvenčí

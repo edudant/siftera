@@ -40,7 +40,7 @@ function apply(base: Bootstrap, local: Local): Bootstrap {
     return patch ? { ...item, state: { ...item.state, ...patch, version: item.state.version + 1 } } : item;
   };
   const stream = base.stream.map(merge).filter((item) => !item.state.read && !item.state.hidden);
-  const library = base.library.map(merge);
+  const library = (base.library ?? []).map(merge);
   const inbox = [...local.added, ...(base.inbox ?? [])].map((entry) => {
     const patch = local.states[entry.candidate.id];
     return patch ? { ...entry, state: { ...entry.state, ...patch } } : entry;
@@ -63,6 +63,11 @@ function patchState(candidateId: string, patch: Patch): UserItemState {
 }
 
 export const demoApi = {
+  // Ukázka drží celý snapshot v jednom souboru, takže archiv jen přebere ze stejných dat.
+  library: async () => {
+    const merged = apply(await fetchSnapshot(), load());
+    return { library: merged.library ?? [] };
+  },
   pending: async () => {
     const base = await fetchSnapshot();
     const local = load();

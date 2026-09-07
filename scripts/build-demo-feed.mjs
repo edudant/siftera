@@ -19,6 +19,15 @@ if (!response.ok) {
   process.exit(1);
 }
 const source = await response.json();
+// Archiv už bootstrap nenese (ADR-020), takže se dotahuje zvlášť a do snapshotu se vloží zpět.
+const archive = await fetch(`${origin}/api/v1/library`, {
+  headers: token ? { Accept: 'application/json', Authorization: `Bearer ${token}` } : { Accept: 'application/json' },
+});
+if (!archive.ok) {
+  console.error(`Archiv na ${origin} neodpověděl (${archive.status}).`);
+  process.exit(1);
+}
+source.library = (await archive.json()).library;
 
 /** Ze zdrojové adresy si ukázka nechá jen původ; dotaz a cesta mohou nést přístupový token. */
 function publicOrigin(url) {
