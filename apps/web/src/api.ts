@@ -34,8 +34,8 @@ export interface Bootstrap {
   feed: { run: FeedRun | null; items: FeedItem[] };
   stream: FeedItem[];
   library: FeedItem[];
-  inbox: Array<{ candidate: Candidate; state: UserItemState }>;
-  hidden: Array<{ candidate: Candidate; state: UserItemState }>;
+  inbox?: Array<{ candidate: Candidate; state: UserItemState }>;
+  hidden?: Array<{ candidate: Candidate; state: UserItemState }>;
   sources: PrototypeSource[];
   plugins: Array<{ id: string; label: string }>;
 }
@@ -99,6 +99,7 @@ const httpApi = {
   deleteSource: (id: string) => request<void>(`/sources/${encodeURIComponent(id)}`, { method: "DELETE" }),
   refreshSource: (id: string) => request<RefreshResult>(`/sources/${encodeURIComponent(id)}/refresh`, { method: "POST", body: "{}" }),
   savePreferences: (preferences: PreferenceProfile) => request<PreferenceProfile>("/preferences", { method: "PUT", body: JSON.stringify({ preferences, expectedVersion: preferences.version }) }),
+  pending: () => request<{ inbox: Array<{ candidate: Candidate; state: UserItemState }>; hidden: Array<{ candidate: Candidate; state: UserItemState }> }>("/pending"),
   markSeen: (candidateIds: string[]) => request<{ marked: number }>("/items/seen", { method: "POST", body: JSON.stringify({ candidateIds }) }),
   setItemState: (candidateId: string, expectedVersion: number, patch: Partial<Pick<UserItemState, "read" | "saved" | "hidden">>) => request<UserItemState>(`/items/${encodeURIComponent(candidateId)}/state`, { method: "PATCH", body: JSON.stringify({ patch, expectedVersion, operationId: crypto.randomUUID() }) }),
   exportEditorJob: () => request<unknown>("/editor/export", { method: "POST", body: JSON.stringify({ operationId: crypto.randomUUID() }) }),

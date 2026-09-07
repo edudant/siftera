@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* global console, process, fetch */
+/* global console, process, fetch, setTimeout */
 /**
  * Lokální ingest (ADR-018): stáhne RSS zdroje, znormalizuje položky a pošle je Workeru jako dávku.
  * Stahování ani AI nikdy neběží na edge — Worker jen validuje, dedupuje a zapisuje.
@@ -40,6 +40,25 @@ const http = new SafeHttpClient({
 });
 const registry = createDefaultConnectorRegistry({ http });
 
+/** Kolik položek se posílá v jednom requestu. Velká dávka narazí na CPU limit Workeru (chyba 1102). */
+const BATCH = Number(process.env.SIFTERA_BATCH ?? 5);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Vyčerpání zdrojů Workeru je přechodné, takže se dávka zkusí znovu s odstupem. */
+async function sendBatch(payload, attempt = 1) {
+  const response = await authorized("/ingest", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (response.ok) return response.json();
+  if ((response.status === 503 || response.status === 429) && attempt <= 4) {
+    await sleep(attempt * 750);
+    return sendBatch(payload, attempt + 1);
+  }
+  throw new Error(`zápis selhal (${response.status})`);
+}
+
 let total = 0;
 for (const source of active) {
   try {
@@ -47,15 +66,20 @@ for (const source of active) {
     const items = collected.inputs.map(({ url, title, excerpt, body, publishedAt, categories, image, externalId }) =>
       ({ url, title, excerpt, body, publishedAt, categories, image, externalId }));
     if (!items.length) { console.log(`${source.name}: nic nového`); continue; }
-    const response = await authorized("/ingest", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ sourceId: source.id, sourceName: source.name, groups: source.groups, deliveryMode: source.deliveryMode, items }),
-    });
-    if (!response.ok) { console.error(`${source.name}: zápis selhal (${response.status})`); continue; }
-    const result = await response.json();
-    total += result.created;
-    console.log(`${source.name}: přijato ${result.received}, nových ${result.created}, aktualizovaných ${result.revised}${collected.complete === false ? " (zdroj byl delší než limit)" : ""}`);
+    let received = 0;
+    let created = 0;
+    let revised = 0;
+    for (let index = 0; index < items.length; index += BATCH) {
+      const result = await sendBatch({
+        sourceId: source.id, sourceName: source.name, groups: source.groups, deliveryMode: source.deliveryMode,
+        items: items.slice(index, index + BATCH),
+      });
+      received += result.received;
+      created += result.created;
+      revised += result.revised;
+    }
+    total += created;
+    console.log(`${source.name}: přijato ${received}, nových ${created}, aktualizovaných ${revised}${collected.complete === false ? " (zdroj byl delší než limit)" : ""}`);
   } catch (error) {
     console.error(`${source.name}: ${error instanceof Error ? error.message : "selhalo"}`);
   }

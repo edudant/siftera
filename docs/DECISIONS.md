@@ -2,6 +2,14 @@
 
 Status accepted, v1, 2026-09-06. Tento soubor uzavírá doporučené volby; změny vyžadují konkrétní důvod a dopad, nikoli opakované obecné porovnávání stacků.
 
+## ADR-020 Bootstrap se dělí, ingest dávkuje
+
+7. 9. produkce přestala fungovat: bootstrap vracel trvale 503 s chybou Cloudflare 1102, tedy vyčerpání zdrojů Workeru. Bezplatný plán dává 10 ms CPU na request a bootstrap dělal v jednom volání příliš mnoho — prefilter nad stovkami kandidátů, skórování proudu, celou knihovnu i celý inbox, a nakonec serializaci přes 300 kB. Počet dotazů do D1 zůstal díky ADR-019 konstantní, ale CPU práce roste s objemem dat, což samotné dávkové čtení neřeší.
+
+Čekající a skryté položky proto dostaly vlastní `GET /pending` a UI si je stahuje teprve v režimu Vše. Bootstrap spadl na 76 kB a odpovídá stabilně; `/pending` nese zbytek. Rozdělení má i tu výhodu, že první vykreslení feedu nečeká na data, která uživatel většinou nechce vidět.
+
+Stejná hranice se ukázala u zápisu: dávka 25 položek přes `POST /ingest` procházela nespolehlivě (jednou 200 za 4 s, jinak 1102). Lokální ingest proto posílá po pěti položkách a na 503 nebo 429 opakuje s narůstajícím odstupem. Po této změně prošlo všech 24 zdrojů bez chyby. Placený plán (30 s CPU) by obojí problém odstranil, ale prototyp má zůstat provozovatelný zdarma.
+
 ## ADR-019 Produkční Worker: token, CORS a ingest zvenčí
 
 6. 9. potvrzen cílový tok GitHub Pages → Cloudflare Worker → D1/R2, se sběrem RSS a AI v lokálním procesu. Před nasazením se ukázaly tři překážky, všechny změřené na běžícím Workeru.

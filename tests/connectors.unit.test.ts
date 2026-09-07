@@ -171,3 +171,20 @@ describe("feed images", () => {
     expect(result.inputs[0]?.image).toBeNull();
   });
 });
+
+describe("media groups", () => {
+  it("reads description and thumbnail from media:group, as YouTube feeds provide them", async () => {
+    const atom = `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">
+      <title>Kanál</title>
+      <entry><title>Video o něčem</title><link rel="alternate" href="https://www.youtube.com/watch?v=abc123" />
+        <published>2026-09-03T08:23:37+00:00</published>
+        <media:group>
+          <media:description>Rozbor nové studie a co z ní plyne pro praxi.</media:description>
+          <media:thumbnail url="https://i.ytimg.com/vi/abc123/hqdefault.jpg" width="480" height="360" />
+        </media:group>
+      </entry></feed>`;
+    const result = await new RssAtomConnector(http(atom, "application/atom+xml")).collect({ ...source, url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCabc" });
+    expect(result.inputs[0]?.excerpt).toContain("Rozbor nové studie");
+    expect(result.inputs[0]?.image).toMatchObject({ url: "https://i.ytimg.com/vi/abc123/hqdefault.jpg", width: 480, height: 360 });
+  });
+});

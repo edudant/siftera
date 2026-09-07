@@ -16,6 +16,10 @@ if (!response.ok) {
 }
 const source = await response.json();
 
+/** Ze zdrojové adresy si ukázka nechá jen původ; dotaz a cesta mohou nést přístupový token. */
+function publicOrigin(url) {
+  try { return new URL(url).origin; } catch { return ''; }
+}
 const item = (entry) => ({
   ...entry,
   item: { ...entry.item, whyIncluded: entry.item.whyIncluded ?? '' },
@@ -29,13 +33,20 @@ const demo = {
   stream: source.stream.map(item),
   inbox: [],
   hidden: [],
+  // URL zdroje může nést privátní token (soukromý podcast feed), takže ven jde jen doména.
   sources: source.sources.map(({ id, name, url, pluginId, groups, deliveryMode, imageMode }) =>
-    ({ id, name, url, pluginId, groups, deliveryMode, imageMode, enabled: true, createdAt: new Date(0).toISOString(), lastFetchedAt: null, lastError: null })),
+    ({ id, name, url: publicOrigin(url), pluginId, groups, deliveryMode, imageMode, enabled: true, createdAt: new Date(0).toISOString(), lastFetchedAt: null, lastError: null })),
   plugins: source.plugins,
 };
 
 const serialized = JSON.stringify(demo);
-for (const [label, pattern] of [['identita', /dev-local-user/], ['e-mail', /"email":"[^"]+"/], ['odkaz na uložený obsah', /"contentRef":"[^"]/]]) {
+for (const [label, pattern] of [
+  ['identita', /dev-local-user/],
+  ['e-mail', /"email":"[^"]+"/],
+  ['odkaz na uložený obsah', /"contentRef":"[^"]/],
+  ['přístupový token v adrese', /[?&](token|key|auth|secret)=/i],
+  ['podpis JWT', /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\./],
+]) {
   if (pattern.test(serialized)) {
     console.error(`Ukázka by obsahovala ${label}; generování zastaveno.`);
     process.exit(1);

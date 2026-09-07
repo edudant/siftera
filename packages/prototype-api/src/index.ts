@@ -313,23 +313,27 @@ export function createPrototypeApi(dependencies: PrototypeApiDependencies) {
 
     try {
       if (request.method === "GET" && segments.join("/") === "bootstrap") {
-        const [preferences, feed, stream, library, sources, pending] = await Promise.all([
+        const [preferences, feed, stream, library, sources] = await Promise.all([
           service.getPreferences(principal),
           service.latestFeed(principal),
           service.unreadStream(principal),
           service.libraryFeed(principal),
           auxStore.listSources(principal.uid),
-          service.pendingCandidates(principal),
         ]);
-        // Skryté kandidáty prefilter vypouští, ale UI je musí umět vrátit zpět (UX: skrytí není jednosměrné).
+        return withCors(response({
+          user: { id: principal.uid, email: resolved.email },
+          preferences, feed, stream, library,
+          sources: sources.map(publicSource),
+          plugins: [{ id: "rss", label: "RSS / Atom" }, { id: "manual", label: "Manual article" }],
+        }));
+      }
+
+      if (request.method === "GET" && segments.join("/") === "pending") {
+        const pending = await service.pendingCandidates(principal);
         const [inbox, hidden] = await repository.read(principal.uid, async (tx) => {
-          // Jedno čtení stavů pro celý bootstrap; dřív se ptal zvlášť na každého kandidáta.
           const [records, states] = await Promise.all([tx.listCandidates(300), tx.listStates(3000)]);
           const byCandidate = new Map(states.map((entry) => [entry.candidateId, entry]));
-          const withState = (candidate: Candidate) => ({
-            candidate,
-            state: byCandidate.get(candidate.id) ?? initialState(candidate),
-          });
+          const withState = (candidate: Candidate) => ({ candidate, state: byCandidate.get(candidate.id) ?? initialState(candidate) });
           const hiddenEntries = records
             .map(({ candidate }) => {
               const state = byCandidate.get(candidate.id);
@@ -338,7 +342,7 @@ export function createPrototypeApi(dependencies: PrototypeApiDependencies) {
             .filter((entry) => entry !== null);
           return [pending.map(withState), hiddenEntries] as const;
         });
-        return withCors(response({ user: { id: principal.uid, email: resolved.email }, preferences, feed, stream, library, inbox, hidden, sources: sources.map(publicSource), plugins: [{ id: "rss", label: "RSS / Atom" }, { id: "manual", label: "Manual article" }] }));
+        return withCors(response({ inbox, hidden }));
       }
 
       if (request.method === "POST" && segments.join("/") === "ingest") {

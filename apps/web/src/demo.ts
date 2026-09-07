@@ -41,7 +41,7 @@ function apply(base: Bootstrap, local: Local): Bootstrap {
   };
   const stream = base.stream.map(merge).filter((item) => !item.state.read && !item.state.hidden);
   const library = base.library.map(merge);
-  const inbox = [...local.added, ...base.inbox].map((entry) => {
+  const inbox = [...local.added, ...(base.inbox ?? [])].map((entry) => {
     const patch = local.states[entry.candidate.id];
     return patch ? { ...entry, state: { ...entry.state, ...patch } } : entry;
   });
@@ -63,6 +63,12 @@ function patchState(candidateId: string, patch: Patch): UserItemState {
 }
 
 export const demoApi = {
+  pending: async () => {
+    const base = await fetchSnapshot();
+    const local = load();
+    const merged = apply(base, local);
+    return { inbox: merged.inbox ?? [], hidden: merged.hidden ?? [] };
+  },
   bootstrap: async (): Promise<Bootstrap> => apply(await fetchSnapshot(), load()),
   addArticle: async (input: { url?: string; title?: string; text?: string; fullText?: boolean }) => {
     const now = new Date().toISOString();

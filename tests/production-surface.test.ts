@@ -87,8 +87,8 @@ describe("batch ingest from a local process", () => {
     const again = await authorized("/ingest", { method: "POST", body: JSON.stringify(body) });
     expect(await again.json()).toMatchObject({ received: 2, created: 0 });
 
-    const bootstrap = await authorized("/bootstrap");
-    expect((await bootstrap.json()).inbox).toHaveLength(2);
+    const pending = await authorized("/pending");
+    expect((await pending.json()).inbox).toHaveLength(2);
   });
 
   it("keeps an image supplied by the local collector", async () => {
@@ -100,8 +100,8 @@ describe("batch ingest from a local process", () => {
         items: [{ url: "https://example.test/c", title: "S obrázkem", image: { url: "https://cdn.example/c.jpg", width: 900, height: 600, alt: "" } }],
       }),
     });
-    const bootstrap = await (await authorized("/bootstrap")).json();
-    expect(bootstrap.inbox[0].candidate.image).toMatchObject({ url: "https://cdn.example/c.jpg", width: 900 });
+    const pending = await (await authorized("/pending")).json();
+    expect(pending.inbox[0].candidate.image).toMatchObject({ url: "https://cdn.example/c.jpg", width: 900 });
   });
 
   it("rejects a batch that is not a valid ingest payload", async () => {
@@ -121,8 +121,8 @@ describe("unread stream", () => {
       method: "POST",
       body: JSON.stringify({ sourceId: "src_1", sourceName: "Example", items: [{ url: `https://example.test/${encodeURIComponent(title)}`, title, excerpt: "perex", publishedAt }] }),
     });
-    const bootstrap = await (await authorized("/bootstrap")).json();
-    const candidate = bootstrap.inbox.find((entry: { candidate: { title: string } }) => entry.candidate.title === title)!.candidate;
+    const pending = await (await authorized("/pending")).json();
+    const candidate = pending.inbox.find((entry: { candidate: { title: string } }) => entry.candidate.title === title)!.candidate;
     const exported = await (await authorized("/editor/export", { method: "POST", body: JSON.stringify({ operationId: `op_${title}` }) })).json();
     const item = {
       candidate: { candidateId: candidate.id, revision: candidate.revision },

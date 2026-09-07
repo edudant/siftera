@@ -119,9 +119,12 @@ header.away { transform: translateY(-100%) }
   border-left: 0;
   border-right: 0;
 }
-.card.read { opacity: .58 }
+/* Ztlumení patří položkám přečteným v dřívějším sezení; právě čtenou kartu nechá čitelnou. */
+.card.dim { opacity: .58 }
 /* Viděné, ale nepřečtené: jen tišší jméno zdroje, žádná další značka — karta zůstává plně čitelná. */
 .card.seen:not(.read) .meta .who { color: var(--muted); font-weight: 650 }
+/* Právě přečtená karta dostane jen tichou značku u zdroje, ne ztlumení celého textu. */
+.card.read:not(.dim) .meta .who::after { content: " · přečteno"; color: var(--faint); font-weight: 650 }
 .card.tap { cursor: pointer }
 .meta {
   display: flex;

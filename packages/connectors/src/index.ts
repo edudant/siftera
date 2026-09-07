@@ -211,6 +211,11 @@ const parser = new XMLParser({
 });
 
 /** Obrázek nesou feedy jako enclosure, media:content, media:thumbnail nebo itunes:image; bereme první bezpečný. */
+/** media:group obaluje popis, náhled i obsah; bez rozbalení vypadá YouTube položka jako pouhý titulek. */
+function mediaGroup(item: Record<string, unknown>): Record<string, unknown> {
+  const group = asRecord(field(item, "media:group"));
+  return group ? { ...item, ...group } : item;
+}
 function feedImage(item: Record<string, unknown>, base: string): NonNullable<IngestInput["image"]> | null {
   for (const key of ["enclosure", "media:content", "media:thumbnail", "itunes:image", "image"]) {
     for (const entry of asList(field(item, key))) {
@@ -265,8 +270,9 @@ function resolvedLink(value: unknown, base: string): string | null {
 function rssItem(source: ConnectorSource, item: Record<string, unknown>, feedUrl: string): NormalizedIngestInput | null {
   const url = resolvedLink(field(item, "link"), feedUrl);
   if (!url) return null;
+  const media = mediaGroup(item);
   const content = text(field(item, "content:encoded", "content"));
-  const description = text(field(item, "description", "summary"));
+  const description = text(field(item, "description", "summary")) || text(field(media, "media:description"));
   const title = text(field(item, "title")) || new URL(url).hostname;
   try {
     return makeInput(
@@ -285,7 +291,7 @@ function rssItem(source: ConnectorSource, item: Record<string, unknown>, feedUrl
           })
           .filter(Boolean),
         medium: "text",
-        image: feedImage(item, feedUrl),
+        image: feedImage(media, feedUrl),
         // Feed text is metadata unless a later content fetch establishes full access.
         access: content ? "partial" : "unavailable",
       },
@@ -302,8 +308,9 @@ function atomItem(source: ConnectorSource, item: Record<string, unknown>, feedUr
   const base = xmlBase ? new URL(xmlBase, feedUrl).toString() : feedUrl;
   const url = resolvedLink(field(item, "link"), base);
   if (!url) return null;
+  const media = mediaGroup(item);
   const content = text(field(item, "content"));
-  const summary = text(field(item, "summary", "subtitle"));
+  const summary = text(field(item, "summary", "subtitle")) || text(field(media, "media:description"));
   const title = text(field(item, "title")) || new URL(url).hostname;
   try {
     return makeInput(
@@ -322,7 +329,7 @@ function atomItem(source: ConnectorSource, item: Record<string, unknown>, feedUr
           })
           .filter(Boolean),
         medium: "text",
-        image: feedImage(item, base),
+        image: feedImage(media, base),
         access: content ? "partial" : "unavailable",
       },
       "rss",

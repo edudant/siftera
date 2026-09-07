@@ -1,6 +1,6 @@
 import { EditorPanel } from "./EditorPanel.js";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { EditorialItem, FeedItem, PreferenceProfile } from "@siftera/shared";
+import type { Candidate, EditorialItem, FeedItem, PreferenceProfile, UserItemState } from "@siftera/shared";
 import { api, ApiError, NEEDS_TOKEN, readToken, writeToken, type Bootstrap, type FeedCategory, type ImageMode, type PrototypeSource } from "./api.js";
 import "./checkbox.css";
 
@@ -9,7 +9,7 @@ type FeedMode = "curated" | "all" | "saved";
 type FeedSort = "smart" | "newest";
 type FeedFilter = { mode: FeedMode; sort: FeedSort; categoryId: string | null };
 type SharedInput = { url: string; title: string; text: string };
-type InboxEntry = Bootstrap["inbox"][number];
+type InboxEntry = { candidate: Candidate; state: UserItemState };
 type WebMcpTool = {
   name: string;
   description: string;
@@ -35,7 +35,6 @@ const folded = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/
 const message = (reason: unknown) => reason instanceof ApiError && reason.status === 401 ? "Chybí nebo neplatí token. Vlož ho v Nastavení." : reason instanceof Error ? reason.message : "Něco se nepovedlo.";
 /** „1 položka čeká“, „3 položky čekají“, „12 položek čeká“. */
 const waitingLabel = (count: number) => count === 1 ? "1 položka čeká na redakční zpracování" : count < 5 ? `${count} položky čekají na redakční zpracování` : `${count} položek čeká na redakční zpracování`;
-const pending = (data: Bootstrap | null) => data?.inbox ?? [];
 /** Jméno zdroje se řeší z aktuální konfigurace; zmrazená provenance u starších vydání může nést i URL. */
 function sourceLabel(sourceId: string | undefined, frozen: string | undefined, names: Map<string, string>): string {
   const current = sourceId ? names.get(sourceId) : undefined;
@@ -169,7 +168,7 @@ export default function App() {
           throw new TypeError("siftera_get_status nepřijímá žádný vstup.");
         }
         const current = bootstrapRef.current;
-        return { content: [{ type: "text", text: JSON.stringify({ signedIn: Boolean(current?.user), loaded: { feed: current?.feed.items.length ?? 0, library: current?.library.length ?? 0, inbox: current?.inbox.length ?? 0, sources: current?.sources.length ?? 0 }, lastPublishedAt: current?.feed.run?.publishedAt ?? null }) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ signedIn: Boolean(current?.user), loaded: { feed: current?.feed.items.length ?? 0, library: current?.library.length ?? 0, inbox: current?.inbox?.length ?? 0, sources: current?.sources.length ?? 0 }, lastPublishedAt: current?.feed.run?.publishedAt ?? null }) }] };
       },
     }, { signal: controller.signal });
     return () => controller.abort();
@@ -255,6 +254,17 @@ function stamp(item: FeedItem): number {
   return Number.isFinite(value) ? value : 0;
 }
 
+function usePending(active: boolean, reloadKey: number) {
+  const [pending, setPending] = useState<{ inbox: InboxEntry[]; hidden: InboxEntry[] } | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    let live = true;
+    void api.pending().then((value) => { if (live) setPending(value); }).catch(() => { if (live) setPending({ inbox: [], hidden: [] }); });
+    return () => { live = false; };
+  }, [active, reloadKey]);
+  return pending;
+}
+
 function FeedView({ data, setTab, onState, onHide, onOpen, modes, names, filter, setFilter, panel, setPanel }: { data: Bootstrap | null; setTab: (tab: Tab) => void; onState: (item: FeedItem, patch: { read?: boolean; saved?: boolean; hidden?: boolean }) => Promise<void>; onHide: (entry: InboxEntry, hidden: boolean) => Promise<void>; onOpen: (feed: FeedItem) => void; modes: Map<string, ImageMode>; names: Map<string, string>; filter: FeedFilter; setFilter: (filter: FeedFilter) => void; panel: boolean; setPanel: (open: boolean) => void }) {
   const categories = data?.preferences.categories ?? [];
   const category = categories.find((entry) => entry.id === filter.categoryId) ?? null;
@@ -274,7 +284,8 @@ function FeedView({ data, setTab, onState, onHide, onOpen, modes, names, filter,
     held.current = { key: viewKey, ids: resolved.map((entry) => entry.item.id) };
     return resolved;
   }, [data, filter, category, viewKey]);
-  const waiting = filter.mode === "all" ? pending(data) : [];
+  const fetched = usePending(filter.mode === "all", data?.preferences.version ?? 0);
+  const waiting = filter.mode === "all" ? fetched?.inbox ?? [] : [];
   const showNote = filter.mode === "curated";
   return <section>
     {panel && <FilterPanel categories={categories} filter={filter} setFilter={setFilter} close={() => setPanel(false)} setTab={setTab} />}
@@ -307,7 +318,7 @@ function FilterPanel({ categories, filter, setFilter, close, setTab }: { categor
 
 /** Prázdný výběr znamená pokaždé jiný další krok: přidat zdroj, obnovit ho, nebo spustit AI editor. */
 function NothingYet({ data, setTab, title, published }: { data: Bootstrap | null; setTab: (tab: Tab) => void; title: string; published: string }) {
-  const waiting = pending(data).length;
+  const waiting = data?.stream.length ?? 0;
   if (waiting) return <Empty title={`${waitingLabel(waiting)}.`} detail={published} action={{ label: "Otevřít AI editor", onClick: () => setTab("editor") }} />;
   if (!data?.sources.length) return <Empty title="Zatím nemáte žádný zdroj." detail="Přidejte RSS/Atom zdroj nebo vložte odkaz do Inboxu. Siftera nenačítá nic sama od sebe." action={{ label: "Přidat zdroj", onClick: () => setTab("sources") }} />;
   return <Empty title={title} detail="Obnovení zdrojů je v prototypu ruční. Spusťte ho u konkrétního zdroje." action={{ label: "Otevřít zdroje", onClick: () => setTab("sources") }} />;
@@ -454,6 +465,7 @@ function Card({ feed, onState, onOpen, imageMode, watch, names }: { feed: FeedIt
   const provenance = item.provenance[0];
   const [expanded, setExpanded] = useState(false);
   const [menu, setMenu] = useState(false);
+  const readOnArrival = useRef(state.read);
   const [small, setSmall] = useState(item.image ? (item.image.width ?? measured.get(item.image.url) ?? 0) > 0 && (item.image.width ?? measured.get(item.image.url)!) < TOO_SMALL : false);
   const base = layoutOf(item, imageMode);
   const layout: Layout = small && base !== "text" ? "compact" : base;
@@ -469,7 +481,7 @@ function Card({ feed, onState, onOpen, imageMode, watch, names }: { feed: FeedIt
     {item.summary}{!expanded && <button className="showmore" onClick={(event) => { event.stopPropagation(); expand(); }}>Zobrazit víc</button>}
   </p>;
   const heading = <h2><a href={provenance?.canonicalUrl ?? "#"} onClick={(event) => { event.preventDefault(); onOpen(feed); }}>{item.headline}</a></h2>;
-  return <article className={`card ${layout} ${state.read ? "read" : ""} ${state.seenAt ? "seen" : ""}`} ref={(element) => watch(element, state.candidateId)} {...tap}>
+  return <article className={`card ${layout} ${readOnArrival.current && state.read ? "dim" : ""} ${state.read ? "read" : ""} ${state.seenAt ? "seen" : ""}`} ref={(element) => watch(element, state.candidateId)} {...tap}>
     <div className="meta">
       <Avatar name={label} url={provenance?.canonicalUrl} />
       <b className="who">{label}</b>
