@@ -75,13 +75,20 @@ function spotifyTarget(item: EditorialItem, onSpotify: Set<string>): string | nu
   if (!provenance?.sourceId || !onSpotify.has(provenance.sourceId)) return null;
   // Hledá se původní název epizody, ne náš přepsaný titulek: ten by ve Spotify nenašel nic.
   // Dvojtečka je ve vyhledávání Spotify filtr pole (`show:`), takže interpunkce musí pryč i s emoji.
-  const query = `${provenance.title} ${provenance.sourceName ?? ""}`
+  const clean = (value: string) => value
     .replace(/^(bonus|special|speciál)\s*[:–-]\s*/i, "")
     .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .replace(/\s+/g, " ")
-    .slice(0, 120)
     .trim();
-  return query ? `https://open.spotify.com/search/${encodeURIComponent(query)}/episodes` : null;
+  const show = clean(provenance.sourceName ?? "");
+  const title = clean(provenance.title);
+  // Jméno pořadu pomáhá jen u krátkých názvů („Tech Now"). U dlouhých název sám stačí a přívěsek dotaz
+  // rozmělňuje; když už jméno pořadu v názvu je, přidávat ho nemá smysl vůbec.
+  const enough = title.split(" ").length >= 5 || folded(title).includes(folded(show));
+  const query = (enough ? title : `${title} ${show}`).slice(0, 120).trim();
+  // Cesta musí skončit dotazem. Mobilní aplikace bere jako dotaz poslední segment, takže z „/search/<dotaz>/episodes"
+  // hledala slovo „episodes"; záložka typu se v odkazu vynechává.
+  return query ? `https://open.spotify.com/search/${encodeURIComponent(query)}` : null;
 }
 /** „12:04“, u delších „1:02:44“. */
 function clock(seconds: number | null | undefined): string | null {
