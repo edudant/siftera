@@ -272,6 +272,7 @@ function rssItem(source: ConnectorSource, item: Record<string, unknown>, feedUrl
   if (!url) return null;
   const media = mediaGroup(item);
   const content = text(field(item, "content:encoded", "content"));
+  const audio = audioMedia(item, feedUrl);
   const description = text(field(item, "description", "summary")) || text(field(media, "media:description"));
   const title = text(field(item, "title")) || new URL(url).hostname;
   try {
@@ -290,7 +291,8 @@ function rssItem(source: ConnectorSource, item: Record<string, unknown>, feedUrl
             return record ? text(record["@term"]) || text(record) : text(category);
           })
           .filter(Boolean),
-        medium: "text",
+        medium: audio ? "audio" : "text",
+        ...(audio ? { media: audio } : {}),
         image: feedImage(media, feedUrl),
         // Feed text is metadata unless a later content fetch establishes full access.
         access: content ? "partial" : "unavailable",
@@ -307,6 +309,38 @@ function rssItem(source: ConnectorSource, item: Record<string, unknown>, feedUrl
  * YouTube položku pozná feed dvakrát: podle `yt:videoId` v Atomu i podle kanonické adresy. Rozpoznání dává
  * klientovi právo přehrát video na místě (oficiální embed), takže se ukládá do kontraktu, ne jen do UI.
  */
+/** itunes:duration hlásí feedy třemi způsoby: „01:14:58“, „5:21:57“ i prostými sekundami. */
+function durationSeconds(value: unknown): number | null {
+  const source = whitespace(text(value));
+  if (!source) return null;
+  const parts = source.split(":").map((part) => Number.parseInt(part, 10));
+  if (parts.some((part) => !Number.isInteger(part) || part < 0)) return null;
+  const seconds = parts.length === 1 ? parts[0]!
+    : parts.length === 2 ? parts[0]! * 60 + parts[1]!
+    : parts.length === 3 ? parts[0]! * 3600 + parts[1]! * 60 + parts[2]!
+    : null;
+  return seconds && seconds > 0 ? seconds : null;
+}
+/** Zvuk nese enclosure; provider zůstává „external“, protože je to přímý soubor, ne platforma. */
+function audioMedia(item: Record<string, unknown>, base: string): NonNullable<IngestInput["media"]> | null {
+  for (const entry of asList(field(item, "enclosure", "media:content"))) {
+    const record = asRecord(entry);
+    if (!record) continue;
+    if (!text(record["@type"]).toLowerCase().startsWith("audio/")) continue;
+    const href = text(record["@url"]) || text(record["url"]);
+    if (!href) continue;
+    try {
+      return {
+        provider: "external",
+        externalId: null,
+        url: assertSafePublicUrl(href, base).toString(),
+        durationSeconds: durationSeconds(field(item, "itunes:duration")) ?? durationSeconds(record["@duration"]),
+      };
+    } catch { continue; }
+  }
+  return null;
+}
+
 function youtubeMedia(item: Record<string, unknown>, url: string): NonNullable<IngestInput["media"]> | null {
   const declared = whitespace(text(field(item, "yt:videoId")));
   let derived: string | null = null;

@@ -2,6 +2,16 @@
 
 Status accepted, v1, 2026-09-06. Tento soubor uzavírá doporučené volby; změny vyžadují konkrétní důvod a dopad, nikoli opakované obecné porovnávání stacků.
 
+## ADR-023 Podcast se otevírá tam, kde ho uživatel poslouchá
+
+Otevírat epizodu na stránce zdroje je u podcastu skoro vždy špatně: uživatel poslouchá ve Spotify, kde má rozposlouchané epizody i historii. Kanonická adresa navíc u některých feedů nevede k přehrávání vůbec — Anchor v `<link>` posílá adresu, která se přesměruje do **creator dashboardu** Spotify, tedy do rozhraní pro autory.
+
+Karta audio položky proto míří do Spotify: tapnutí i nadpis vedou tam a přidané tlačítko to říká nahlas. Stránka zdroje zůstává dostupná pod „···", protože u některých podcastů (mujRozhlas) nese poznámky, přepis nebo odkazy z epizody.
+
+Cíl se skládá ve dvou úrovních. Když položka nese `media` s `provider=spotify`, jde se přímo na `open.spotify.com/episode/<id>` — univerzální odkaz, který na mobilu otevře aplikaci. Bez toho se skládá vyhledání v záložce epizod nad **původním** názvem epizody (ne nad naším přepsaným titulkem, ten by ve Spotify nenašel nic) a jménem pořadu; interpunkce z dotazu jde pryč, protože dvojtečka je ve vyhledávání Spotify filtr pole. Na webovém přehrávači to trefuje správnou epizodu prvním výsledkem; **mobilní webový přehrávač ale route `/search` ignoruje** a vykreslí vlastní rozcestník, takže tahle záloha je slabší, než by se zdálo. Přesné `episode` odkazy jsou proto cílový stav a vyžadují Spotify Web API — bez přihlášení se ID epizody získat nedá.
+
+Nabídka se řídí skupinou zdroje `spotify`, ne doménou feedu: hostitel nic neříká (Zeitgeist je na Anchoru, Na Východ! na mujRozhlas, oba na Spotify jsou), a placená exkluzivita jako HeroHero tam naopak není, takže by vyhledání skončilo naprázdno. Skupina se čte z **živé** konfigurace zdroje, protože vydané položky jsou nemměnné (ADR-010) a jejich zmrazené `groups` by změnu nezachytily. Konektor u zvukového enclosure zapisuje `medium=audio` a `media` s délkou z `itunes:duration`, takže karta umí říct, jestli jde o čtvrt hodiny nebo pět hodin.
+
 ## ADR-022 Video se přehrává ve feedu, ale až na kliknutí
 
 Odchod na originál je u článků nutnost — cizí web se do iframu vložit nedá, protože si to zakazuje sám (`X-Frame-Options`). YouTube je výjimka: embed nabízí oficiálně, takže u videa není důvod feed opouštět. Karta proto přehrává na místě.

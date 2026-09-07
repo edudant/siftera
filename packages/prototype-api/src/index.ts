@@ -231,7 +231,7 @@ function normalizeGroup(value: string): string {
 }
 const sourceGroupInputSchema = z.string().max(200).transform(normalizeGroup).pipe(groupSchema);
 const sourceCreateRequest = z.object({ name: z.string().trim().min(1).max(200), url: z.string().trim().url().max(2048), pluginId: z.literal("rss"), groups: z.array(sourceGroupInputSchema).max(10).optional(), deliveryMode: z.enum(["curated", "all"]).optional(), imageMode: z.enum(["auto", "large", "small", "none"]).optional() }).strict();
-const sourcePatchRequest = z.object({ enabled: z.boolean().optional(), name: z.string().trim().min(1).max(200).optional(), imageMode: z.enum(["auto", "large", "small", "none"]).optional() }).strict().refine((value) => Object.keys(value).length > 0);
+const sourcePatchRequest = z.object({ enabled: z.boolean().optional(), name: z.string().trim().min(1).max(200).optional(), groups: z.array(sourceGroupInputSchema).max(10).optional(), imageMode: z.enum(["auto", "large", "small", "none"]).optional() }).strict().refine((value) => Object.keys(value).length > 0);
 const preferenceRequest = z.object({ preferences: preferenceSchema, expectedVersion: z.number().int().min(1) }).strict();
 const stateRequest = z.object({ patch: z.object({ read: z.boolean().optional(), saved: z.boolean().optional(), hidden: z.boolean().optional() }).strict().refine((value) => Object.keys(value).length > 0), expectedVersion: z.number().int().nonnegative(), operationId: idSchema }).strict();
 const ingestRequest = z.object({

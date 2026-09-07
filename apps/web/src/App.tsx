@@ -64,6 +64,25 @@ function youtubeId(item: EditorialItem): string | null {
     return id && /^[\w-]{11}$/.test(id) ? id : null;
   } catch { return null; }
 }
+/**
+ * Podcast má smysl otevírat tam, kde ho uživatel poslouchá. Přesnou epizodu vydáme, jen když ji nese
+ * `media`; jinak se skládá vyhledání v záložce epizod, které na původní název trefuje epizodu prvním
+ * výsledkem. Nabízí se to jen u zdrojů označených skupinou „spotify“ — placené exkluzivity tam nejsou.
+ */
+function spotifyTarget(item: EditorialItem, onSpotify: Set<string>): string | null {
+  if (item.media?.provider === "spotify" && item.media.externalId) return `https://open.spotify.com/episode/${item.media.externalId}`;
+  const provenance = item.provenance[0];
+  if (!provenance?.sourceId || !onSpotify.has(provenance.sourceId)) return null;
+  // Hledá se původní název epizody, ne náš přepsaný titulek: ten by ve Spotify nenašel nic.
+  // Dvojtečka je ve vyhledávání Spotify filtr pole (`show:`), takže interpunkce musí pryč i s emoji.
+  const query = `${provenance.title} ${provenance.sourceName ?? ""}`
+    .replace(/^(bonus|special|speciál)\s*[:–-]\s*/i, "")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .slice(0, 120)
+    .trim();
+  return query ? `https://open.spotify.com/search/${encodeURIComponent(query)}/episodes` : null;
+}
 /** „12:04“, u delších „1:02:44“. */
 function clock(seconds: number | null | undefined): string | null {
   if (!seconds || seconds < 0) return null;
@@ -86,6 +105,7 @@ const GLYPHS: Record<string, React.ReactNode> = {
   sort: <path d="M7 4.5v15M7 19.5 3.6 16M17 19.5v-15M17 4.5 20.4 8" />,
   undo: <path d="M4.6 9.5h10.2a4.7 4.7 0 0 1 0 9.4H8M4.6 9.5 8.6 5.5M4.6 9.5l4 4" />,
   play: <path d="M7.4 4.8 19.6 12 7.4 19.2z" fill="currentColor" stroke="none" />,
+  spotify: <><circle cx="12" cy="12" r="9.2" /><path d="M7.1 9.4c3.3-.9 6.9-.6 9.8 1M7.8 12.6c2.7-.7 5.6-.5 8 .8M8.6 15.7c2.1-.5 4.3-.3 6.2.6" /></>,
   home: <path d="M3.8 10.7 12 4.2l8.2 6.5V20H3.8zM9.6 20v-5.6h4.8V20" />,
   news: <><rect x="3.2" y="5.6" width="17.6" height="12.8" rx="2.1" /><path d="M6.6 9.4h6.2M6.6 12.4h6.2M6.6 15.3h4M16 9.4h1.6M16 12.4h1.6M16 15.3h1.6" /></>,
   tech: <><rect x="7.2" y="7.2" width="9.6" height="9.6" rx="2" /><path d="M12 3.4v3.8M12 16.8v3.8M3.4 12h3.8M16.8 12h3.8M8.6 3.9v3.3M15.4 3.9v3.3M8.6 16.8v3.3M15.4 16.8v3.3" /></>,
@@ -234,12 +254,15 @@ export default function App() {
   const results = useMemo(() => { const needle = folded(query); const items = [...new Map(all.map((item) => [item.item.id, item])).values()]; return needle ? items.filter((item) => folded(`${item.item.headline} ${item.item.summary} ${item.item.topics.join(" ")} ${item.item.provenance[0]?.sourceName ?? ""}`).includes(needle)) : []; }, [all, query]);
   const changeState = async (item: FeedItem, patch: { read?: boolean; saved?: boolean; hidden?: boolean }) => { try { await api.setItemState(item.state.candidateId, item.state.version, patch); await reload(true); } catch (reason) { setNotice(message(reason)); } };
   const hideCandidate = async (entry: InboxEntry, hidden = true) => { try { await api.setItemState(entry.candidate.id, entry.state.version, { hidden }); await reload(true); } catch (reason) { setNotice(message(reason)); } };
+  // Skupina zdroje se čte z živé konfigurace, ne z vydání: vydané položky jsou nemměnné (ADR-010),
+  // takže označení „je na Spotify" musí zabrat i u toho, co bylo vydané dřív.
+  const onSpotify = useMemo(() => new Set((data?.sources ?? []).filter((entry) => entry.groups.includes("spotify")).map((entry) => entry.id)), [data]);
   /**
    * Originál se otevírá ve stejné kartě, v PWA i v prohlížeči: uživatel se vrací tlačítkem zpět, nezavírá karty.
    * Pozici ve feedu si proto ukládáme sami — bez toho by se SPA po návratu načetla odshora.
    */
-  const openOriginal = (feed: FeedItem) => {
-    const url = feed.item.provenance[0]?.canonicalUrl;
+  const openOriginal = (feed: FeedItem, prefer: "auto" | "source" = "auto") => {
+    const url = (prefer === "auto" ? spotifyTarget(feed.item, onSpotify) : null) ?? feed.item.provenance[0]?.canonicalUrl;
     if (!url) return;
     if (!feed.state.read) void changeState(feed, { read: true });
     try { sessionStorage.setItem(RESUME_KEY, JSON.stringify({ tab, scrollY: window.scrollY, filter } satisfies Resume)); } catch { /* soukromý režim */ }
@@ -265,7 +288,7 @@ export default function App() {
     {shared && <ShareBox value={shared} update={setShared} accept={() => void acceptShare()} dismiss={() => { setShared(null); history.replaceState({}, "", location.pathname); }} />}
     {notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice(null)} aria-label="Zavřít">×</button></div>}
     {error && <div className="error" role="alert">{error}{error.includes("token") ? <button onClick={() => setTab("settings")}>Otevřít nastavení</button> : <button onClick={() => void reload()}>Načíst znovu</button>}</div>}
-    {query ? <Page title={`„${query}“`} eyebrow="HLEDÁNÍ V NAČTENÝCH DATECH"><p className="hint">Prohledává se aktuálně načtený výběr a knihovna. Starší archiv se nepředstírá.</p><Cards items={results} onState={changeState} onOpen={openOriginal} modes={modes} names={names} empty={<Empty title="Nic jsme nenašli." detail="Hledá se jen ve vydaném výběru a knihovně, ne v čekajících položkách Inboxu." />} /></Page> : <Content tab={tab} data={data} loading={loading} setTab={setTab} reload={reload} notice={setNotice} onState={changeState} onHide={hideCandidate} onOpen={openOriginal} modes={modes} names={names} filter={filter} setFilter={setFilter} panel={panel} setPanel={setPanel} />}
+    {query ? <Page title={`„${query}“`} eyebrow="HLEDÁNÍ V NAČTENÝCH DATECH"><p className="hint">Prohledává se aktuálně načtený výběr a knihovna. Starší archiv se nepředstírá.</p><Cards items={results} onState={changeState} onOpen={openOriginal} modes={modes} names={names} onSpotify={onSpotify} empty={<Empty title="Nic jsme nenašli." detail="Hledá se jen ve vydaném výběru a knihovně, ne v čekajících položkách Inboxu." />} /></Page> : <Content tab={tab} data={data} loading={loading} setTab={setTab} reload={reload} notice={setNotice} onState={changeState} onHide={hideCandidate} onOpen={openOriginal} modes={modes} names={names} filter={filter} setFilter={setFilter} panel={panel} setPanel={setPanel} />}
   </main></div>;
 }
 
@@ -351,6 +374,7 @@ function FeedView({ data, setTab, onState, onHide, onOpen, modes, names, filter,
   const category = channel.category;
   const saved = channel.special === "saved";
   // Zdroje k filtrování drží kanál: v kategorii jen její, v Přehledu všechny.
+  const onSpotify = useMemo(() => new Set((data?.sources ?? []).filter((entry) => entry.groups.includes("spotify")).map((entry) => entry.id)), [data]);
   const sources = useMemo(() => {
     const all = data?.sources ?? [];
     return category && category.sourceIds.length ? all.filter((entry) => category.sourceIds.includes(entry.id)) : all;
@@ -384,7 +408,7 @@ function FeedView({ data, setTab, onState, onHide, onOpen, modes, names, filter,
   return <section>
     {panel && <FilterPanel sources={sources} filter={filter} setFilter={setFilter} close={() => setPanel(false)} setTab={setTab} channel={channel} />}
     <ChannelNote channel={channel} filter={filter} setFilter={setFilter} names={names} count={items.length} data={data} />
-    <Cards items={items} onState={onState} onOpen={onOpen} modes={modes} names={names}
+    <Cards items={items} onState={onState} onOpen={onOpen} modes={modes} names={names} onSpotify={onSpotify}
       tail={waiting.map((entry) => <PendingCard key={entry.candidate.id} entry={entry} source={entry.candidate.sourceId === "manual" ? "Ručně vloženo" : sourceLabel(entry.candidate.sourceId, undefined, names)} onHide={onHide} imageMode={modes.get(entry.candidate.sourceId) ?? "auto"} />)}
       empty={saved
         ? <Empty title="Nemáte nic uloženého." detail="Srdíčkem u karty si odložíte položku na později." />
@@ -441,7 +465,7 @@ function streamNote(data: Bootstrap | null): string | null {
 function Page({ title, eyebrow, children }: { title: string; eyebrow: string; children: React.ReactNode }) { return <section><div className="heading"><p>{eyebrow}</p><h1>{title}</h1></div>{children}</section>; }
 function Loading() { return <div className="cards" aria-busy="true"><div className="skeleton"/><div className="skeleton"/><div className="skeleton"/></div>; }
 
-function Cards({ items, onState, onOpen, modes, names, empty, tail = [] }: { items: FeedItem[]; onState: (item: FeedItem, patch: { read?: boolean; saved?: boolean; hidden?: boolean }) => Promise<void>; onOpen: (feed: FeedItem) => void; modes: Map<string, ImageMode>; names: Map<string, string>; empty: React.ReactNode; tail?: React.ReactNode[] }) {
+function Cards({ items, onState, onOpen, modes, names, onSpotify, empty, tail = [] }: { items: FeedItem[]; onState: (item: FeedItem, patch: { read?: boolean; saved?: boolean; hidden?: boolean }) => Promise<void>; onOpen: (feed: FeedItem, prefer?: "auto" | "source") => void; modes: Map<string, ImageMode>; names: Map<string, string>; onSpotify: Set<string>; empty: React.ReactNode; tail?: React.ReactNode[] }) {
   const watch = useSeen();
   // Který přehrávač je živý, ví proud: spuštěním dalšího videa první zmizí, takže nikdy nehrají dvě naráz.
   const [playing, setPlaying] = useState<string | null>(null);
@@ -466,7 +490,7 @@ function Cards({ items, onState, onOpen, modes, names, empty, tail = [] }: { ite
   if (!total) return <>{empty}</>;
   return <><div className="cards">
     {visible.slice(0, shown).map((feed) => <Card key={feed.item.id} feed={feed} onState={onState} onOpen={onOpen} imageMode={modes.get(feed.item.provenance[0]?.sourceId ?? "") ?? "auto"} watch={watch} names={names}
-      playing={playing === feed.item.id} onPlay={() => setPlaying(feed.item.id)} />)}
+      playing={playing === feed.item.id} onPlay={() => setPlaying(feed.item.id)} spotify={spotifyTarget(feed.item, onSpotify)} />)}
     {shown > visible.length && tail.slice(0, shown - visible.length)}
   </div>
     {shown < total && <div ref={more} className="loading-more">Načítám další…</div>}</>;
@@ -570,7 +594,7 @@ function useTap(onTap: () => void) {
   };
 }
 
-function Card({ feed, onState, onOpen, imageMode, watch, names, playing, onPlay }: { feed: FeedItem; onState: (item: FeedItem, patch: { read?: boolean; saved?: boolean; hidden?: boolean }) => Promise<void>; onOpen: (feed: FeedItem) => void; imageMode: ImageMode; watch: (element: Element | null, candidateId: string) => void; names: Map<string, string>; playing: boolean; onPlay: () => void }) {
+function Card({ feed, onState, onOpen, imageMode, watch, names, playing, onPlay, spotify }: { feed: FeedItem; onState: (item: FeedItem, patch: { read?: boolean; saved?: boolean; hidden?: boolean }) => Promise<void>; onOpen: (feed: FeedItem, prefer?: "auto" | "source") => void; imageMode: ImageMode; watch: (element: Element | null, candidateId: string) => void; names: Map<string, string>; playing: boolean; onPlay: () => void; spotify: string | null }) {
   const { item, state } = feed;
   const provenance = item.provenance[0];
   const [expanded, setExpanded] = useState(false);
@@ -584,7 +608,10 @@ function Card({ feed, onState, onOpen, imageMode, watch, names, playing, onPlay 
   const base = layoutOf(item, imageMode);
   const layout: Layout = video ? (base === "text" ? "standard" : base === "compact" ? "standard" : base) : small && base !== "text" ? "compact" : base;
   const label = sourceLabel(provenance?.sourceId, provenance?.sourceName, names);
-  const kind = item.presentation === "long_read" && item.readingMinutes ? `Stojí za přečtení · ${item.readingMinutes} min` : item.presentation === "article" ? null : presentationLabel[item.presentation] ?? null;
+  const length = clock(item.media?.durationSeconds);
+  const kind = item.presentation === "long_read" && item.readingMinutes ? `Stojí za přečtení · ${item.readingMinutes} min`
+    : item.presentation === "article" ? null
+    : `${presentationLabel[item.presentation] ?? "Položka"}${length ? ` · ${length}` : ""}`;
   const tap = useTap(() => onOpen(feed));
   // Rozbalení je způsob, jak si položku přečíst; proto se počítá stejně jako otevření originálu.
   const expand = () => { setExpanded(true); if (!state.read) void onState(feed, { read: true }); };
@@ -615,7 +642,7 @@ function Card({ feed, onState, onOpen, imageMode, watch, names, playing, onPlay 
   const tags = item.topics.length > 0
     ? <div className="topics">{item.topics.slice(0, 5).map((topic) => <span key={topic}>{topic.replace(/-/g, " ")}</span>)}</div>
     : null;
-  const heading = <h2><a href={provenance?.canonicalUrl ?? "#"} onClick={(event) => { event.preventDefault(); onOpen(feed); }}>{item.headline}</a></h2>;
+  const heading = <h2><a href={spotify ?? provenance?.canonicalUrl ?? "#"} onClick={(event) => { event.preventDefault(); onOpen(feed); }}>{item.headline}</a></h2>;
   return <article className={`card ${layout} ${readOnArrival.current && state.read ? "dim" : ""} ${state.read ? "read" : ""} ${state.seenAt ? "seen" : ""}`} ref={(element) => watch(element, state.candidateId)} {...tap}>
     <div className="meta">
       <Avatar name={label} url={provenance?.canonicalUrl} />
@@ -631,10 +658,12 @@ function Card({ feed, onState, onOpen, imageMode, watch, names, playing, onPlay 
       <button onClick={() => { setMenu(false); void onState(feed, { hidden: true }); }}>Skrýt z výběru</button>
       <button onClick={() => { setMenu(false); void onState(feed, { read: !state.read }); }}>{state.read ? "Označit jako nepřečtené" : "Označit jako přečtené"}</button>
       <button onClick={() => { setMenu(false); setWhy(!why); }}>{why ? "Skrýt podrobnosti" : "Proč to vidím"}</button>
+      {spotify && <button onClick={() => { setMenu(false); onOpen(feed, "source"); }}>Otevřít stránku zdroje</button>}
     </div>}
     {layout === "compact"
       ? <div className="row"><div className="body">{heading}{summary}</div>{shot}</div>
       : <>{heading}{shot}{item.presentation === "distilled_fact" && item.distilledText ? <p className="fact">{item.distilledText}</p> : summary}</>}
+    {spotify && <button className="spotify" onClick={() => onOpen(feed)}><Icon name="spotify" /> Přehrát ve Spotify</button>}
     {tags}
     {why && <div className="why">
       {item.whyIncluded && <p>Proč to vidíte: {item.whyIncluded}</p>}
