@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { EditorialService, type Clock, type IdGenerator } from "../packages/core/src/index.js";
 import { MemoryContentStore, MemoryRepository } from "../packages/storage/src/index.js";
 import { createPrototypeApi, MemoryPrototypeAuxStore } from "../packages/prototype-api/src/index.js";
-import type { Principal } from "../packages/shared/src/index.js";
+import { feedCategorySchema, preferenceSchema, type Principal } from "../packages/shared/src/index.js";
 
 /**
  * Pokrývá to, co přineslo produkční nasazení: cross-origin přístup z jiné domény, dávkový ingest zvenčí
@@ -260,5 +260,43 @@ describe("read fan-out", () => {
     const small = await measure(5);
     const large = await measure(50);
     expect(large).toBeLessThan(small * 2);
+  });
+});
+
+describe("kanály v preferencích (ADR-021)", () => {
+  const channel = { id: "tech", label: "Tech", icon: "tech", topics: ["ai"], sourceIds: ["src_1"] };
+
+  it("přijme kategorii s ikonou z uzavřeného seznamu", () => {
+    expect(feedCategorySchema.parse(channel).icon).toBe("tech");
+  });
+
+  it("ikona je nepovinná, aby starší kategorie zůstaly platné", () => {
+    const bare = { id: channel.id, label: channel.label, topics: channel.topics, sourceIds: channel.sourceIds };
+    expect(feedCategorySchema.parse(bare).icon).toBeUndefined();
+  });
+
+  it("odmítne ikonu, kterou lišta neumí nakreslit", () => {
+    expect(feedCategorySchema.safeParse({ ...channel, icon: "rocket" }).success).toBe(false);
+  });
+
+  it("kanál musí mít aspoň jedno téma nebo zdroj", () => {
+    expect(feedCategorySchema.safeParse({ ...channel, topics: [], sourceIds: [] }).success).toBe(false);
+  });
+
+  it("unese kanál nad čtyřiceti zdroji, protože zpravodajských zdrojů bývá hodně", () => {
+    const many = Array.from({ length: 40 }, (_, index) => `src_${index}`);
+    expect(feedCategorySchema.safeParse({ ...channel, sourceIds: many }).success).toBe(true);
+    expect(feedCategorySchema.safeParse({ ...channel, sourceIds: [...many, "src_40"] }).success).toBe(false);
+  });
+
+  it("preference bez kategorií zůstávají platné a doplní prázdný seznam", () => {
+    const parsed = preferenceSchema.parse({
+      version: 1, instructions: "", language: "cs", timezone: "Europe/Prague",
+      preferredTopics: [], avoidTopics: [], desiredTopicMix: [], maxPerTopic: 8, maxPerSource: 5,
+      discoveryFraction: 0.2, longReadTarget: 2, entertainmentFraction: 0.15, targetItems: 25,
+      candidateLimit: 80, contentReadLimit: 40, maxCandidateAgeDays: 7, includeRead: false,
+      behaviorEnabled: false, updatedAt: NOW.toISOString(),
+    });
+    expect(parsed.categories).toEqual([]);
   });
 });

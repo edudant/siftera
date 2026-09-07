@@ -9,7 +9,11 @@ import { writeFileSync } from 'node:fs';
 import process from 'node:process';
 
 const origin = process.argv[2] ?? 'http://127.0.0.1:8788';
-const response = await fetch(`${origin}/api/v1/bootstrap`, { headers: { Accept: 'application/json' } });
+// Produkční backend vyžaduje token. Bere se z prostředí, ne z argumentu: argumenty vidí každý výpis procesů.
+const token = process.env.SIFTERA_TOKEN ?? '';
+const response = await fetch(`${origin}/api/v1/bootstrap`, {
+  headers: token ? { Accept: 'application/json', Authorization: `Bearer ${token}` } : { Accept: 'application/json' },
+});
 if (!response.ok) {
   console.error(`Backend na ${origin} neodpověděl (${response.status}). Spusť pnpm dev:hosted.`);
   process.exit(1);

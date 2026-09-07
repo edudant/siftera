@@ -1,13 +1,16 @@
 import { EditorPanel } from "./EditorPanel.js";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Candidate, EditorialItem, FeedItem, PreferenceProfile, UserItemState } from "@siftera/shared";
+import type { Candidate, ChannelIcon, EditorialItem, FeedItem, PreferenceProfile, UserItemState } from "@siftera/shared";
 import { api, ApiError, NEEDS_TOKEN, readToken, writeToken, type Bootstrap, type FeedCategory, type ImageMode, type PrototypeSource } from "./api.js";
 import "./checkbox.css";
 
 type Tab = "feed" | "settings" | "sources" | "editor" | "add";
-type FeedMode = "curated" | "all" | "saved";
+/** Feed = nepřečtený proud po předvýběru, Vše = celý kanál včetně přečteného a nevybraného (ADR-021). */
+type FeedMode = "feed" | "all";
 type FeedSort = "smart" | "newest";
-type FeedFilter = { mode: FeedMode; sort: FeedSort; categoryId: string | null };
+type FeedFilter = { channel: string; mode: FeedMode; sort: FeedSort; sourceId: string | null };
+/** Kanál je karta v horní liště: Přehled, uživatelské kategorie, Uložené. */
+type Channel = { id: string; label: string; icon: keyof typeof GLYPHS; category: FeedCategory | null; special?: "home" | "saved" };
 type SharedInput = { url: string; title: string; text: string };
 type InboxEntry = { candidate: Candidate; state: UserItemState };
 type WebMcpTool = {
@@ -58,6 +61,15 @@ const GLYPHS: Record<string, React.ReactNode> = {
   more: <><circle cx="5.4" cy="12" r="1.5" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" /><circle cx="18.6" cy="12" r="1.5" fill="currentColor" stroke="none" /></>,
   sort: <path d="M7 4.5v15M7 19.5 3.6 16M17 19.5v-15M17 4.5 20.4 8" />,
   undo: <path d="M4.6 9.5h10.2a4.7 4.7 0 0 1 0 9.4H8M4.6 9.5 8.6 5.5M4.6 9.5l4 4" />,
+  home: <path d="M3.8 10.7 12 4.2l8.2 6.5V20H3.8zM9.6 20v-5.6h4.8V20" />,
+  news: <><rect x="3.2" y="5.6" width="17.6" height="12.8" rx="2.1" /><path d="M6.6 9.4h6.2M6.6 12.4h6.2M6.6 15.3h4M16 9.4h1.6M16 12.4h1.6M16 15.3h1.6" /></>,
+  tech: <><rect x="7.2" y="7.2" width="9.6" height="9.6" rx="2" /><path d="M12 3.4v3.8M12 16.8v3.8M3.4 12h3.8M16.8 12h3.8M8.6 3.9v3.3M15.4 3.9v3.3M8.6 16.8v3.3M15.4 16.8v3.3" /></>,
+  podcast: <><rect x="9.3" y="3.2" width="5.4" height="9.8" rx="2.7" /><path d="M5.9 11.2a6.1 6.1 0 0 0 12.2 0M12 17.3v3.3M8.8 20.6h6.4" /></>,
+  video: <><rect x="3.2" y="5.2" width="17.6" height="13.6" rx="2.8" /><path d="M10.6 9.6 15.6 12l-5 2.4z" fill="currentColor" /></>,
+  science: <><path d="M9.4 3.6h5.2M10.2 3.6v5L5.9 16.9a2.1 2.1 0 0 0 1.8 3.2h8.6a2.1 2.1 0 0 0 1.8-3.2L13.8 8.6v-5" /><path d="M7.9 14.4h8.2" /></>,
+  work: <><rect x="3.2" y="7.4" width="17.6" height="11.2" rx="2.2" /><path d="M9.2 7.4V5.8a1.7 1.7 0 0 1 1.7-1.7h2.2a1.7 1.7 0 0 1 1.7 1.7v1.6M3.2 12.4h17.6" /></>,
+  star: <path d="m12 4.3 2.5 5 5.5.8-4 3.9.95 5.5L12 16.9l-4.95 2.6.95-5.5-4-3.9 5.5-.8z" />,
+  world: <><circle cx="12" cy="12" r="8.2" /><path d="M3.8 12h16.4M12 3.8c2.2 2.3 3.4 5.1 3.4 8.2s-1.2 5.9-3.4 8.2c-2.2-2.3-3.4-5.1-3.4-8.2s1.2-5.9 3.4-8.2z" /></>,
 };
 function Icon({ name, filled }: { name: keyof typeof GLYPHS; filled?: boolean }) {
   return <svg className="icon-svg" viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true" focusable="false"
@@ -99,6 +111,26 @@ function useHidingHeader(): boolean {
   return shown;
 }
 type Resume = { tab: Tab; scrollY: number; filter: FeedFilter };
+const DEFAULT_FILTER: FeedFilter = { channel: "home", mode: "feed", sort: "smart", sourceId: null };
+/** Obnovený filtr je uživatelský vstup ze sessionStorage: může být z jiné verze aplikace, takže se čte obezřetně. */
+function sameFilter(value: unknown): FeedFilter {
+  const raw = (typeof value === "object" && value !== null ? value : {}) as Partial<FeedFilter>;
+  return {
+    channel: typeof raw.channel === "string" ? raw.channel : DEFAULT_FILTER.channel,
+    mode: raw.mode === "all" ? "all" : "feed",
+    sort: raw.sort === "newest" ? "newest" : "smart",
+    sourceId: typeof raw.sourceId === "string" ? raw.sourceId : null,
+  };
+}
+/** Přehled drží vše, kategorie nesou vlastní ikonu, Uložené uzavírají řadu (ADR-021). */
+const HOME_CHANNEL: Channel = { id: "home", label: "Přehled", icon: "home", category: null, special: "home" };
+function channelsOf(categories: FeedCategory[]): Channel[] {
+  return [
+    HOME_CHANNEL,
+    ...categories.map((entry) => ({ id: entry.id, label: entry.label, icon: (entry.icon ?? "star") as keyof typeof GLYPHS, category: entry })),
+    { id: "saved", label: "Uložené", icon: "heart", category: null, special: "saved" as const },
+  ];
+}
 const basisLabel: Record<string, string> = { full_text: "celý dostupný text", excerpt: "výňatek od zdroje", metadata: "pouze metadata" };
 const presentationLabel: Record<string, string> = { article: "Článek", long_read: "Delší čtení", distilled_fact: "Ověřený fakt", school_notice: "Školní oznámení", video: "Video", audio: "Audio", discovery: "Objev", learning: "K naučení", recommendation: "Doporučení", short_fun: "Pro pobavení" };
 
@@ -113,7 +145,7 @@ export default function App() {
   const [searching, setSearching] = useState(false);
   const [panel, setPanel] = useState(false);
   const [restore, setRestore] = useState<number | null>(null);
-  const [filter, setFilter] = useState<FeedFilter>({ mode: "curated", sort: "smart", categoryId: null });
+  const [filter, setFilter] = useState<FeedFilter>(DEFAULT_FILTER);
   const headerShown = useHidingHeader();
   const bootstrapRef = useRef<Bootstrap | null>(null);
   const [shared, setShared] = useState<SharedInput | null>(() => {
@@ -142,7 +174,7 @@ export default function App() {
         sessionStorage.removeItem(RESUME_KEY);
         const resume = JSON.parse(saved) as Resume;
         setTab(resume.tab);
-        if (resume.filter) setFilter(resume.filter);
+        if (resume.filter) setFilter(sameFilter(resume.filter));
         setRestore(resume.scrollY);
       }
     } catch { /* soukromý režim nebo poškozený záznam */ }
@@ -200,7 +232,10 @@ export default function App() {
           <button className="add-item" onClick={() => setTab("add")} aria-label="Přidat odkaz nebo text"><Icon name="plus" /></button>
           <button className={`add-item ${tab === "feed" ? "" : "on"}`} onClick={() => setTab(tab === "feed" ? "settings" : "feed")} aria-label={tab === "feed" ? "Nastavení" : "Zpět na feed"}><Icon name={tab === "feed" ? "settings" : "back"} /></button></>}
     </div>
-    {tab === "feed" && !query && <FeedTabs filter={filter} setFilter={setFilter} panel={panel} setPanel={setPanel} />}
+    {tab === "feed" && !query && <>
+      <ChannelBar channels={channelsOf(data?.preferences.categories ?? [])} filter={filter} setFilter={setFilter} />
+      <ModeBar filter={filter} setFilter={setFilter} panel={panel} setPanel={setPanel} />
+    </>}
   </header><main>
     {shared && <ShareBox value={shared} update={setShared} accept={() => void acceptShare()} dismiss={() => { setShared(null); history.replaceState({}, "", location.pathname); }} />}
     {notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice(null)} aria-label="Zavřít">×</button></div>}
@@ -218,11 +253,30 @@ function Content({ tab, data, loading, setTab, reload, notice, onState, onHide, 
   return <Settings preferences={data?.preferences ?? null} sources={data?.sources ?? []} notice={notice} setTab={setTab} reload={reload} />;
 }
 
-function FeedTabs({ filter, setFilter, panel, setPanel }: { filter: FeedFilter; setFilter: (filter: FeedFilter) => void; panel: boolean; setPanel: (open: boolean) => void }) {
-  const modes: Array<[FeedMode, string]> = [["curated", "Výběr"], ["all", "Vše"], ["saved", "Uložené"]];
-  const tuned = filter.categoryId !== null || filter.sort !== "smart";
-  return <div className="tabs" role="tablist">
-    {modes.map(([mode, label]) => <button key={mode} role="tab" aria-selected={filter.mode === mode} className={filter.mode === mode ? "on" : ""} onClick={() => setFilter({ ...filter, mode })}>{label}</button>)}
+/**
+ * Kanály jsou ikonky v hlavičce, protože jich bude přibývat (do budoucna i pracovní přehledy) a text by
+ * se na mobilu nevešel. Vodorovně se roluje, aktivní kanál drží plnou barvu a jmenovku.
+ */
+function ChannelBar({ channels, filter, setFilter }: { channels: Channel[]; filter: FeedFilter; setFilter: (filter: FeedFilter) => void }) {
+  const active = channels.some((entry) => entry.id === filter.channel) ? filter.channel : "home";
+  return <div className="channels" role="tablist" aria-label="Kanály">
+    {channels.map((entry) => <button key={entry.id} role="tab" aria-selected={active === entry.id} className={active === entry.id ? "on" : ""}
+      onClick={() => { setFilter({ ...filter, channel: entry.id, sourceId: null }); window.scrollTo(0, 0); }}>
+      <span className="glyph"><Icon name={entry.icon} filled={entry.id === "saved" && active === "saved"} /></span>
+      <small>{entry.label}</small>
+    </button>)}
+  </div>;
+}
+
+/** Režim patří dovnitř kanálu: v každém se dá brouzdat nepřečteným (Feed) i celým archivem (Vše). */
+function ModeBar({ filter, setFilter, panel, setPanel }: { filter: FeedFilter; setFilter: (filter: FeedFilter) => void; panel: boolean; setPanel: (open: boolean) => void }) {
+  const tuned = filter.sort !== "smart" || filter.sourceId !== null;
+  const saved = filter.channel === "saved";
+  const modes: Array<[FeedMode, string]> = [["feed", "Feed"], ["all", "Vše"]];
+  return <div className="modes">
+    {saved
+      ? <span className="mode-note">Vše, co jste si uložili</span>
+      : modes.map(([mode, label]) => <button key={mode} aria-pressed={filter.mode === mode} className={filter.mode === mode ? "on" : ""} onClick={() => setFilter({ ...filter, mode })}>{label}</button>)}
     <span className="spacer" />
     <button className={`filter ${tuned ? "on" : ""}`} onClick={() => setPanel(!panel)} aria-expanded={panel} aria-label="Řazení a filtry"><Icon name="sort" /></button>
   </div>;
@@ -267,52 +321,80 @@ function usePending(active: boolean, reloadKey: number) {
 
 function FeedView({ data, setTab, onState, onHide, onOpen, modes, names, filter, setFilter, panel, setPanel }: { data: Bootstrap | null; setTab: (tab: Tab) => void; onState: (item: FeedItem, patch: { read?: boolean; saved?: boolean; hidden?: boolean }) => Promise<void>; onHide: (entry: InboxEntry, hidden: boolean) => Promise<void>; onOpen: (feed: FeedItem) => void; modes: Map<string, ImageMode>; names: Map<string, string>; filter: FeedFilter; setFilter: (filter: FeedFilter) => void; panel: boolean; setPanel: (open: boolean) => void }) {
   const categories = data?.preferences.categories ?? [];
-  const category = categories.find((entry) => entry.id === filter.categoryId) ?? null;
+  const channels = useMemo(() => channelsOf(categories), [categories]);
+  const channel = channels.find((entry) => entry.id === filter.channel) ?? HOME_CHANNEL;
+  const category = channel.category;
+  const saved = channel.special === "saved";
+  // Zdroje k filtrování drží kanál: v kategorii jen její, v Přehledu všechny.
+  const sources = useMemo(() => {
+    const all = data?.sources ?? [];
+    return category && category.sourceIds.length ? all.filter((entry) => category.sourceIds.includes(entry.id)) : all;
+  }, [data, category]);
   // Přepnutí pohledu je nový seznam; do té doby si feed drží pořadí, aby pod rukama nemizely položky.
-  const viewKey = `${filter.mode}|${filter.categoryId ?? ""}|${filter.sort}`;
+  const viewKey = `${channel.id}|${saved ? "saved" : filter.mode}|${filter.sort}|${filter.sourceId ?? ""}`;
   const held = useRef<{ key: string; ids: string[] }>({ key: viewKey, ids: [] });
   if (held.current.key !== viewKey) held.current = { key: viewKey, ids: [] };
   const items = useMemo(() => {
-    const base = filter.mode === "curated" ? data?.stream ?? []
-      : filter.mode === "saved" ? (data?.library ?? []).filter((entry) => entry.state.saved)
+    const base = saved ? (data?.library ?? []).filter((entry) => entry.state.saved)
+      : filter.mode === "feed" ? data?.stream ?? []
       : data?.library ?? [];
-    const filtered = category ? base.filter((item) => matchesCategory(item, category)) : base;
+    const inChannel = category ? base.filter((item) => matchesCategory(item, category)) : base;
+    const filtered = filter.sourceId ? inChannel.filter((item) => item.item.provenance.some((entry) => entry.sourceId === filter.sourceId)) : inChannel;
     const current = filter.sort === "newest" ? [...filtered].sort((left, right) => stamp(right) - stamp(left)) : filtered;
     const known = new Map((data?.library ?? []).concat(data?.stream ?? []).map((entry) => [entry.item.id, entry]));
     const order = keepOrder(held.current.ids, current.map((entry) => entry.item.id));
     const resolved = order.map((id) => known.get(id)).filter((entry): entry is FeedItem => Boolean(entry));
     held.current = { key: viewKey, ids: resolved.map((entry) => entry.item.id) };
     return resolved;
-  }, [data, filter, category, viewKey]);
-  const fetched = usePending(filter.mode === "all", data?.preferences.version ?? 0);
-  const waiting = filter.mode === "all" ? fetched?.inbox ?? [] : [];
-  const showNote = filter.mode === "curated";
+  }, [data, filter, category, saved, viewKey]);
+  // Prázdný kanál má dvě různé příčiny: buď je přečtený, nebo do něj ještě nic nedorazilo. Rozlišuje se počtem přes celý archiv.
+  const stocked = useMemo(() => {
+    if (!category) return true;
+    return (data?.library ?? []).concat(data?.stream ?? []).some((item) => matchesCategory(item, category));
+  }, [data, category]);
+  // Nezpracované položky patří do Přehledu / Vše: nikam jinam se ještě zařadit nedaly.
+  const rawVisible = !saved && !category && filter.mode === "all";
+  const fetched = usePending(rawVisible, data?.preferences.version ?? 0);
+  const waiting = rawVisible ? fetched?.inbox ?? [] : [];
   return <section>
-    {panel && <FilterPanel categories={categories} filter={filter} setFilter={setFilter} close={() => setPanel(false)} setTab={setTab} />}
-    {category && <p className="stream-note">Kategorie {category.label} · <button className="linky" onClick={() => setFilter({ ...filter, categoryId: null })}>zrušit</button></p>}
-    {!category && showNote && streamNote(data) && <p className="stream-note">{streamNote(data)}</p>}
+    {panel && <FilterPanel sources={sources} filter={filter} setFilter={setFilter} close={() => setPanel(false)} setTab={setTab} channel={channel} />}
+    <ChannelNote channel={channel} filter={filter} setFilter={setFilter} names={names} count={items.length} data={data} />
     <Cards items={items} onState={onState} onOpen={onOpen} modes={modes} names={names}
       tail={waiting.map((entry) => <PendingCard key={entry.candidate.id} entry={entry} source={entry.candidate.sourceId === "manual" ? "Ručně vloženo" : sourceLabel(entry.candidate.sourceId, undefined, names)} onHide={onHide} imageMode={modes.get(entry.candidate.sourceId) ?? "auto"} />)}
-      empty={filter.mode === "curated"
-        ? <NothingYet data={data} setTab={setTab} title="Zatím tu nic nečeká." published="Proud drží nepřečtené položky z posledních 14 dní. Nové sestaví AI editor z čekajících." />
-        : filter.mode === "saved"
-          ? <Empty title="Nemáte nic uloženého." detail="Srdíčkem u karty si odložíte položku na později." />
-          : <Empty title="Nic tu není." detail="V režimu Vše najdeš i položky, které redakcí neprošly." />} />
+      empty={saved
+        ? <Empty title="Nemáte nic uloženého." detail="Srdíčkem u karty si odložíte položku na později." />
+        : filter.mode === "all"
+          ? <Empty title="Nic tu není." detail={category ? `Z kanálu ${channel.label} zatím nic neprošlo redakcí. Zkontrolujte, které zdroje do něj patří.` : "V režimu Vše najdeš i položky, které redakcí neprošly."} {...(category ? { action: { label: "Upravit kanály", onClick: () => setTab("settings") } } : {})} />
+          : category
+            ? stocked
+              ? <Empty title="Máte přečteno." detail={`V kanálu ${channel.label} není nic nepřečteného. Přepněte na Vše, ať vidíte i starší.`} action={{ label: "Zobrazit vše", onClick: () => setFilter({ ...filter, mode: "all" }) }} />
+              : <Empty title={`V kanálu ${channel.label} ještě nic není.`} detail="Položky ze zdrojů kanálu čekají na redakční zpracování — po dalším běhu AI editoru se tu objeví." action={{ label: "Otevřít AI editor", onClick: () => setTab("editor") }} />
+            : <NothingYet data={data} setTab={setTab} title="Zatím tu nic nečeká." published="Proud drží nepřečtené položky z posledních 14 dní. Nové sestaví AI editor z čekajících." />} />
   </section>;
 }
 
-function FilterPanel({ categories, filter, setFilter, close, setTab }: { categories: FeedCategory[]; filter: FeedFilter; setFilter: (filter: FeedFilter) => void; close: () => void; setTab: (tab: Tab) => void }) {
+/** „1 položka", „3 položky", „0 položek" — nula se v češtině chová jako množné číslo. */
+const itemsLabel = (count: number) => `${count} ${count === 1 ? "položka" : count > 1 && count < 5 ? "položky" : "položek"}`;
+/** Jeden řádek pod hlavičkou říká, co je na obrazovce a jak z toho vystoupit — bez novinové hlavy. */
+function ChannelNote({ channel, filter, setFilter, names, count, data }: { channel: Channel; filter: FeedFilter; setFilter: (filter: FeedFilter) => void; names: Map<string, string>; count: number; data: Bootstrap | null }) {
+  if (filter.sourceId) return <p className="stream-note">{names.get(filter.sourceId) ?? "Zdroj"} · {itemsLabel(count)} · <button className="linky" onClick={() => setFilter({ ...filter, sourceId: null })}>zrušit filtr</button></p>;
+  if (channel.category) return <p className="stream-note">{channel.label} · {filter.mode === "feed" ? "nepřečtené" : "vše"} · {itemsLabel(count)}</p>;
+  if (channel.special === "saved" || filter.mode === "all") return null;
+  return streamNote(data) ? <p className="stream-note">{streamNote(data)}</p> : null;
+}
+
+function FilterPanel({ sources, filter, setFilter, close, setTab, channel }: { sources: PrototypeSource[]; filter: FeedFilter; setFilter: (filter: FeedFilter) => void; close: () => void; setTab: (tab: Tab) => void; channel: Channel }) {
   return <div className="panel">
     <div className="panel-row"><span>Řadit</span><div className="seg">
       <button className={filter.sort === "smart" ? "on" : ""} onClick={() => setFilter({ ...filter, sort: "smart" })}>Podle výběru</button>
       <button className={filter.sort === "newest" ? "on" : ""} onClick={() => setFilter({ ...filter, sort: "newest" })}>Od nejnovějších</button>
     </div></div>
-    <div className="panel-row"><span>Kategorie</span></div>
+    <div className="panel-row"><span>Zdroj{channel.category ? ` v kanálu ${channel.label}` : ""}</span></div>
     <div className="chips">
-      <button className={!filter.categoryId ? "chip on" : "chip"} onClick={() => setFilter({ ...filter, categoryId: null })}>Vše</button>
-      {categories.map((entry) => <button key={entry.id} className={filter.categoryId === entry.id ? "chip on" : "chip"} onClick={() => { setFilter({ ...filter, categoryId: entry.id }); close(); }}>{entry.label}</button>)}
-      <button className="chip add" onClick={() => setTab("settings")}>+ Upravit</button>
+      <button className={!filter.sourceId ? "chip on" : "chip"} onClick={() => setFilter({ ...filter, sourceId: null })}>Všechny</button>
+      {sources.map((entry) => <button key={entry.id} className={filter.sourceId === entry.id ? "chip on" : "chip"} onClick={() => { setFilter({ ...filter, sourceId: entry.id }); close(); }}>{entry.name}</button>)}
     </div>
+    <div className="panel-row"><span /><button className="linky" onClick={() => { close(); setTab("settings"); }}>Upravit kanály</button></div>
   </div>;
 }
 
@@ -464,7 +546,10 @@ function Card({ feed, onState, onOpen, imageMode, watch, names }: { feed: FeedIt
   const { item, state } = feed;
   const provenance = item.provenance[0];
   const [expanded, setExpanded] = useState(false);
+  const [why, setWhy] = useState(false);
   const [menu, setMenu] = useState(false);
+  const lede = useRef<HTMLParagraphElement | null>(null);
+  const [clipped, setClipped] = useState(false);
   const readOnArrival = useRef(state.read);
   const [small, setSmall] = useState(item.image ? (item.image.width ?? measured.get(item.image.url) ?? 0) > 0 && (item.image.width ?? measured.get(item.image.url)!) < TOO_SMALL : false);
   const base = layoutOf(item, imageMode);
@@ -474,12 +559,29 @@ function Card({ feed, onState, onOpen, imageMode, watch, names }: { feed: FeedIt
   const tap = useTap(() => onOpen(feed));
   // Rozbalení je způsob, jak si položku přečíst; proto se počítá stejně jako otevření originálu.
   const expand = () => { setExpanded(true); if (!state.read) void onState(feed, { read: true }); };
+  useEffect(() => {
+    const element = lede.current;
+    if (!element || expanded) return;
+    const measure = () => setClipped(element.scrollHeight - element.clientHeight > 4);
+    measure();
+    // Písmo dojde později a šířka se mění s otočením displeje; bez pozorovatele by odkaz zmizel nebo přebýval.
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [expanded, item.summary]);
   const shot = layout !== "text" && item.image && imageMode !== "none"
     ? <Shot image={item.image} alt={item.headline} thumb={layout === "compact"} onSmall={() => setSmall(true)} />
     : null;
-  const summary = <p className={expanded ? "lede" : "lede clamp"} onClick={() => { if (expanded) setExpanded(false); else expand(); }}>
-    {item.summary}{!expanded && <button className="showmore" onClick={(event) => { event.stopPropagation(); expand(); }}>Zobrazit víc</button>}
-  </p>;
+  // Odkaz „Zobrazit víc“ nesmí být uvnitř zkráceného odstavce: clamp ho odstřihne i s ním. Patří pod text,
+  // a jen když se text opravdu nevejde — jinak by slibovalo pokračování, které neexistuje.
+  const summary = <>
+    <p ref={lede} className={expanded ? "lede" : "lede clamp"} onClick={() => { if (expanded) setExpanded(false); else expand(); }}>{item.summary}</p>
+    {clipped && !expanded && <button className="showmore" onClick={(event) => { event.stopPropagation(); expand(); }}>Zobrazit víc</button>}
+    {expanded && <button className="showmore" onClick={(event) => { event.stopPropagation(); setExpanded(false); }}>Zobrazit méně</button>}
+  </>;
+  const tags = item.topics.length > 0
+    ? <div className="topics">{item.topics.slice(0, 5).map((topic) => <span key={topic}>{topic.replace(/-/g, " ")}</span>)}</div>
+    : null;
   const heading = <h2><a href={provenance?.canonicalUrl ?? "#"} onClick={(event) => { event.preventDefault(); onOpen(feed); }}>{item.headline}</a></h2>;
   return <article className={`card ${layout} ${readOnArrival.current && state.read ? "dim" : ""} ${state.read ? "read" : ""} ${state.seenAt ? "seen" : ""}`} ref={(element) => watch(element, state.candidateId)} {...tap}>
     <div className="meta">
@@ -495,13 +597,13 @@ function Card({ feed, onState, onOpen, imageMode, watch, names }: { feed: FeedIt
     {menu && <div className="menu">
       <button onClick={() => { setMenu(false); void onState(feed, { hidden: true }); }}>Skrýt z výběru</button>
       <button onClick={() => { setMenu(false); void onState(feed, { read: !state.read }); }}>{state.read ? "Označit jako nepřečtené" : "Označit jako přečtené"}</button>
-      <button onClick={() => { setMenu(false); if (expanded) setExpanded(false); else expand(); }}>{expanded ? "Skrýt podrobnosti" : "Proč to vidím"}</button>
+      <button onClick={() => { setMenu(false); setWhy(!why); }}>{why ? "Skrýt podrobnosti" : "Proč to vidím"}</button>
     </div>}
     {layout === "compact"
       ? <div className="row"><div className="body">{heading}{summary}</div>{shot}</div>
       : <>{heading}{shot}{item.presentation === "distilled_fact" && item.distilledText ? <p className="fact">{item.distilledText}</p> : summary}</>}
-    {expanded && <div className="why">
-      {item.topics.length > 0 && <div className="topics">{item.topics.map((topic) => <span key={topic}>{topic.replace(/-/g, " ")}</span>)}</div>}
+    {tags}
+    {why && <div className="why">
       {item.whyIncluded && <p>Proč to vidíte: {item.whyIncluded}</p>}
       <p>Shrnutí sestavil váš AI editor. Podklad: {basisLabel[item.assessment?.basis ?? "metadata"]}.</p>
     </div>}
@@ -608,10 +710,13 @@ function TokenSetting({ notice, reload }: { notice: (text: string) => void; relo
 
 function Settings({ preferences, sources, notice, setTab, reload }: { preferences: PreferenceProfile | null; sources: PrototypeSource[]; notice: (text: string) => void; setTab: (tab: Tab) => void; reload: () => Promise<void> }) { const [draft, setDraft] = useState<PreferenceProfile | null>(preferences); useEffect(() => setDraft(preferences), [preferences]); const save = async () => { if (!draft) return; try { await api.savePreferences(draft); notice("Preference jsou uložené."); await reload(); } catch (reason) { notice(message(reason)); } }; return <Page title="Nastavení" eyebrow="VÁŠ PROSTOR"><div className="settings"><button onClick={() => setTab("sources")}><span>☷</span><strong>Zdroje</strong><small>Přidat, obnovit nebo odebrat</small><b>›</b></button><button onClick={() => setTab("editor")}><span>✦</span><strong>AI editor</strong><small>Exportovat práci a importovat odpověď</small><b>›</b></button></div>{NEEDS_TOKEN && <TokenSetting notice={notice} reload={reload} />}<section className="prefs"><h2>Co chci číst</h2>{draft ? <><label>Popište svůj dlouhodobý výběr<textarea rows={6} value={draft.instructions} onChange={(event) => setDraft({ ...draft, instructions: event.target.value })} /></label><label>Témata oddělte čárkou<input value={draft.preferredTopics.join(", ")} onChange={(event) => setDraft({ ...draft, preferredTopics: event.target.value.split(",").map((word) => word.trim()).filter(Boolean) })} /></label><button className="primary" onClick={() => void save()}>Uložit preference</button></> : <p>Preference se načítají z vašeho účtu.</p>}</section>{draft && <Categories preferences={draft} sources={sources} save={async (next) => { try { await api.savePreferences(next); notice("Kategorie jsou uložené."); await reload(); } catch (reason) { notice(message(reason)); } }} />}</Page>; }
 /** Kategorie si skládá uživatel z témat a zdrojů, která ve svých datech vidí (ADR-016). */
+/** Ikona kanálu je jen vizuální klíč; nabídka je uzavřená, aby lišta držela jeden výtvarný jazyk. */
+const CHANNEL_ICONS: Array<[ChannelIcon, string]> = [["news", "Zprávy"], ["tech", "Technika"], ["podcast", "Podcast"], ["video", "Video"], ["science", "Věda"], ["world", "Svět"], ["work", "Práce"], ["star", "Ostatní"]];
+
 function Categories({ preferences, sources, save }: { preferences: PreferenceProfile; sources: PrototypeSource[]; save: (next: PreferenceProfile) => Promise<void> }) {
   const [draft, setDraft] = useState<FeedCategory | null>(null);
   const list = preferences.categories ?? [];
-  const start = () => setDraft({ id: crypto.randomUUID(), label: "", topics: [], sourceIds: [] });
+  const start = () => setDraft({ id: crypto.randomUUID(), label: "", icon: "star", topics: [], sourceIds: [] });
   const commit = async () => {
     if (!draft || !draft.label.trim() || (!draft.topics.length && !draft.sourceIds.length)) return;
     const next = { ...preferences, categories: [...list.filter((entry) => entry.id !== draft.id), { ...draft, label: draft.label.trim() }] };
@@ -620,20 +725,22 @@ function Categories({ preferences, sources, save }: { preferences: PreferencePro
   };
   const remove = async (id: string) => { await save({ ...preferences, categories: list.filter((entry) => entry.id !== id) }); };
   return <section className="prefs">
-    <h2>Kategorie</h2>
-    <p className="hint">Kategorie je vlastní filtr feedu: vyber zdroje, témata, nebo obojí.</p>
+    <h2>Kanály</h2>
+    <p className="hint">Kanál je vlastní filtr feedu a ikonka v hlavičce: vyber zdroje, témata, nebo obojí.</p>
     <div className="chips">
-      {list.map((entry) => <span key={entry.id} className="chip">{entry.label}<button className="linky" onClick={() => void remove(entry.id)} aria-label={`Smazat ${entry.label}`}> ✕</button></span>)}
-      {!draft && <button className="chip add" onClick={start}>+ Nová</button>}
+      {list.map((entry) => <span key={entry.id} className="chip"><Icon name={(entry.icon ?? "star") as keyof typeof GLYPHS} /> {entry.label}<button className="linky" onClick={() => void remove(entry.id)} aria-label={`Smazat ${entry.label}`}> ✕</button></span>)}
+      {!draft && <button className="chip add" onClick={start}>+ Nový</button>}
     </div>
     {draft && <div className="panel">
       <label>Název<input value={draft.label} onChange={(event) => setDraft({ ...draft, label: event.target.value })} placeholder="např. Technika" /></label>
+      <div className="panel-row"><span>Ikona</span></div>
+      <div className="chips">{CHANNEL_ICONS.map(([icon, label]) => <button key={icon} className={(draft.icon ?? "star") === icon ? "chip on" : "chip"} onClick={() => setDraft({ ...draft, icon })} aria-label={label} title={label}><Icon name={icon} /></button>)}</div>
       <div className="panel-row"><span>Zdroje</span></div>
       <div className="chips">{sources.map((source) => <button key={source.id} className={draft.sourceIds.includes(source.id) ? "chip on" : "chip"} onClick={() => setDraft({ ...draft, sourceIds: draft.sourceIds.includes(source.id) ? draft.sourceIds.filter((id) => id !== source.id) : [...draft.sourceIds, source.id] })}>{source.name}</button>)}</div>
       <label>Témata <em>oddělená čárkou</em><input value={draft.topics.join(", ")} onChange={(event) => setDraft({ ...draft, topics: event.target.value.split(",").map((word) => word.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "")).filter(Boolean).slice(0, 20) })} placeholder="linux, ai, programovani" /></label>
       <div className="sheet-actions">
         <button onClick={() => setDraft(null)}>Zrušit</button>
-        <button className="primary" onClick={() => void commit()} disabled={!draft.label.trim() || (!draft.topics.length && !draft.sourceIds.length)}>Uložit kategorii</button>
+        <button className="primary" onClick={() => void commit()} disabled={!draft.label.trim() || (!draft.topics.length && !draft.sourceIds.length)}>Uložit kanál</button>
       </div>
     </div>}
   </section>;

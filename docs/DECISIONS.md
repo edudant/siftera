@@ -2,6 +2,16 @@
 
 Status accepted, v1, 2026-09-06. Tento soubor uzavírá doporučené volby; změny vyžadují konkrétní důvod a dopad, nikoli opakované obecné porovnávání stacků.
 
+## ADR-021 Kanály jako ikony, režim uvnitř kanálu
+
+7. 9. se ukázalo, že tři textové taby (Výběr / Vše / Uložené) míchají dvě různé otázky: *co* čtu a *jak* to čtu. Uživatel chce brouzdat po oblastech — zprávy, technika, podcasty, video — a v každé z nich se rozhodnout, jestli vidí jen nepřečtené, nebo celý archiv. Do budoucna k nim mají přibýt i pracovní přehledy (například otevřené merge requesty), kde je „oblast" ještě zřetelnější.
+
+Horní lišta proto nese **kanály jako ikony**: Přehled, uživatelské kategorie z preferencí a Uložené. Kategorie dostala nepovinné pole `icon` z uzavřeného seznamu (`news`, `tech`, `podcast`, `video`, `science`, `work`, `star`, `world`), takže lišta drží jeden výtvarný jazyk a text jmenovky slouží jen jako podpis. Řada se vodorovně roluje; přidání kanálu tedy nic nerozbije. **Režim Feed / Vše patří dovnitř kanálu** — Feed je nepřečtený proud po předvýběru (ADR-015), Vše celý archiv kanálu včetně přečteného a toho, co redakcí neprošlo. Řazení a filtr na jednotlivý zdroj zůstávají v panelu pod ikonou, ale filtr zdrojů se teď omezuje na zdroje aktivního kanálu; kategorie z panelu zmizela, protože se z ní stal kanál. „Výběr" se jmenuje **Feed**.
+
+Karta zveřejnila tagy: byly schované v rozbalení, přitom je to nejrychlejší způsob, jak poznat, o čem položka je. „Zobrazit víc" naopak pokračuje v textu jako na Facebooku a nic dalšího neodhaluje — vysvětlení „proč to vidím" a použitý podklad se přesunuly do nabídky pod „···", kam patří jako doplňková informace. Odkaz „Zobrazit víc" nesmí být uvnitř zkráceného odstavce (clamp ho odstřihne i s ním) a ukazuje se jen tehdy, když text opravdu přetéká.
+
+Pracovní kanály zůstávají zatím jen připraveným místem: ikona `work` existuje, konektor ne. Merge requesty se mění v čase, nemají projít redakčním shrnutím a „přečteno" u nich znamená něco jiného než u článku — to je vlastní rozhodnutí, ne rozšíření tohoto.
+
 ## ADR-020 Bootstrap se dělí, ingest dávkuje
 
 7. 9. produkce přestala fungovat: bootstrap vracel trvale 503 s chybou Cloudflare 1102, tedy vyčerpání zdrojů Workeru. Bezplatný plán dává 10 ms CPU na request a bootstrap dělal v jednom volání příliš mnoho — prefilter nad stovkami kandidátů, skórování proudu, celou knihovnu i celý inbox, a nakonec serializaci přes 300 kB. Počet dotazů do D1 zůstal díky ADR-019 konstantní, ale CPU práce roste s objemem dat, což samotné dávkové čtení neřeší.

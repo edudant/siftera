@@ -143,12 +143,15 @@ export const sourceSchema = z
   })
   .strict();
 /** Uživatelská kategorie je pojmenovaný filtr nad tématy a zdroji, ne škatulka pro AI editora (ADR-016). */
+/** Ikona kanálu. Uzavřený seznam, aby UI nemuselo kreslit cokoli, co přijde z dat. */
+export const channelIconSchema = z.enum(["news", "tech", "podcast", "video", "science", "work", "star", "world"]);
 export const feedCategorySchema = z
   .object({
     id: idSchema,
     label: z.string().min(1).max(40),
+    icon: channelIconSchema.optional(),
     topics: z.array(z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/)).max(20),
-    sourceIds: z.array(idSchema).max(20),
+    sourceIds: z.array(idSchema).max(40),
   })
   .strict()
   .refine((value) => value.topics.length + value.sourceIds.length > 0, {
@@ -457,6 +460,7 @@ export type Candidate = z.infer<typeof candidateSchema>;
 export type CandidateContent = z.infer<typeof candidateContentSchema>;
 export type PreferenceProfile = z.infer<typeof preferenceSchema>;
 export type FeedCategory = z.infer<typeof feedCategorySchema>;
+export type ChannelIcon = z.infer<typeof channelIconSchema>;
 export type EditorialProposal = z.infer<typeof editorialProposalSchema>;
 export type EditorialSubmission = z.infer<typeof editorialSubmissionSchema>;
 export type UserItemState = z.infer<typeof itemStateSchema>;

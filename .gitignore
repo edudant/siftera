@@ -14,3 +14,4 @@ coverage/
 .dev.vars
 .dev.vars.*
 .siftera-prod-token
+.claude/
