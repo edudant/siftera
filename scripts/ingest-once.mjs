@@ -25,7 +25,10 @@ if (!bootstrap.ok) {
   process.exit(1);
 }
 const { sources } = await bootstrap.json();
-const active = sources.filter((source) => source.enabled && source.pluginId === "rss");
+// SIFTERA_ONLY zúží běh na zdroje, jejichž jméno obsahuje daný text — pro cílené doplnění jednoho feedu.
+const only = (process.env.SIFTERA_ONLY ?? "").toLocaleLowerCase();
+const active = sources.filter((source) => source.enabled && source.pluginId === "rss"
+  && (!only || source.name.toLocaleLowerCase().includes(only)));
 if (!active.length) {
   console.log("Žádný aktivní RSS zdroj.");
   process.exit(0);
